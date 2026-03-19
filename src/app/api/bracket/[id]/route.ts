@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import {
   PickRound,
@@ -12,11 +12,11 @@ type RouteContext = {
   }>;
 };
 
-function getLoggedInPlayerName(request: Request) {
+function getLoggedInPlayerName(request: NextRequest) {
   return request.cookies.get("loera_player_name")?.value?.trim() || "";
 }
 
-export async function GET(request: Request, context: RouteContext) {
+export async function GET(request: NextRequest, context: RouteContext) {
   const { id } = await context.params;
   const loggedInPlayerName = getLoggedInPlayerName(request);
 
@@ -89,7 +89,7 @@ export async function GET(request: Request, context: RouteContext) {
   });
 }
 
-export async function PATCH(request: Request, context: RouteContext) {
+export async function PATCH(request: NextRequest, context: RouteContext) {
   const { id } = await context.params;
   const loggedInPlayerName = getLoggedInPlayerName(request);
 
@@ -167,7 +167,6 @@ export async function PATCH(request: Request, context: RouteContext) {
   }
 
   const normalized = normalizeReadablePicks(body.readablePicks);
-
   const championPick = getChampionPickFromRounds(normalized);
 
   const { data: updated, error: updateError } = await supabaseAdmin
