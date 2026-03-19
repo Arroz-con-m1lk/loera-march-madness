@@ -1,10 +1,5 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import {
-  PickRound,
-  normalizeReadablePicks,
-  getChampionPickFromRounds,
-} from "@/lib/bracketRounds";
 
 type RouteContext = {
   params: Promise<{
@@ -12,11 +7,11 @@ type RouteContext = {
   }>;
 };
 
-function getLoggedInPlayerName(request: Request) {
+function getLoggedInPlayerName(request: NextRequest) {
   return request.cookies.get("loera_player_name")?.value?.trim() || "";
 }
 
-export async function POST(request: Request, context: RouteContext) {
+export async function POST(request: NextRequest, context: RouteContext) {
   const { id } = await context.params;
   const loggedInPlayerName = getLoggedInPlayerName(request);
 
@@ -34,26 +29,20 @@ export async function POST(request: Request, context: RouteContext) {
     );
   }
 
-  let body: {
-    readablePicks?: PickRound[];
-  };
-
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json(
-      { error: "Invalid request body." },
-      { status: 400 }
-    );
-  }
-
-  // 🔍 Get existing bracket
   const { data: existing, error: fetchError } = await supabaseAdmin
     .from("brackets")
     .select(`
       id,
-      locked,
+      label,
+      bracket_name,
+      image_url,
+      paid,
       submitted,
+      locked,
+      score,
+      champion_alive,
+      champion_pick,
+      readable_picks,
       players ( name )
     `)
     .eq("id", id)
@@ -79,7 +68,6 @@ export async function POST(request: Request, context: RouteContext) {
 
   const ownerName = player?.name?.trim() || "";
 
-  // 🔒 Ownership check
   if (ownerName.toLowerCase() !== loggedInPlayerName.toLowerCase()) {
     return NextResponse.json(
       { error: "You can only submit your own bracket." },
@@ -87,34 +75,18 @@ export async function POST(request: Request, context: RouteContext) {
     );
   }
 
-  // 🔒 Prevent resubmission if already locked
-  if (existing.locked || existing.submitted) {
+  if (existing.locked) {
     return NextResponse.json(
-      { error: "Bracket already submitted." },
+      { error: "Bracket is already locked." },
       { status: 403 }
     );
   }
 
-  // 🧠 Normalize + derive champion
-  const normalized = normalizeReadablePicks(body.readablePicks);
-  const championPick = getChampionPickFromRounds(normalized);
-
-  // 🚨 Basic validation
-  if (!championPick) {
-    return NextResponse.json(
-      { error: "Champion pick is required before submitting." },
-      { status: 400 }
-    );
-  }
-
-  // 🔐 FINAL SUBMIT (this is the important part)
   const { data: updated, error: updateError } = await supabaseAdmin
     .from("brackets")
     .update({
-      readable_picks: normalized,
-      champion_pick: championPick,
       submitted: true,
-      locked: true, // 🔥 THIS locks the bracket permanently
+      locked: true,
     })
     .eq("id", id)
     .select(`
@@ -122,9 +94,14 @@ export async function POST(request: Request, context: RouteContext) {
       label,
       bracket_name,
       image_url,
+      paid,
       submitted,
       locked,
-      champion_pick
+      score,
+      champion_alive,
+      champion_pick,
+      readable_picks,
+      players ( name )
     `)
     .maybeSingle();
 
@@ -143,11 +120,18 @@ export async function POST(request: Request, context: RouteContext) {
   }
 
   return NextResponse.json({
-    ok: true,
     id: updated.id,
     label: updated.label || updated.bracket_name || "Unnamed Bracket",
-    submitted: true,
-    locked: true,
-    championPick: updated.champion_pick,
+    playerName: ownerName,
+    image: updated.image_url || undefined,
+    paid: !!updated.paid,
+    submitted: !!updated.submitted,
+    locked: !!updated.locked,
+    score: updated.score ?? 0,
+    championAlive: updated.champion_alive ?? true,
+    championPick: updated.champion_pick ?? null,
+    readablePicks: Array.isArray(updated.readable_picks)
+      ? updated.readable_picks
+      : [],
   });
 }
