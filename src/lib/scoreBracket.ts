@@ -6,14 +6,16 @@ import {
   normalizeReadablePicks,
 } from "./bracketRounds";
 
+export type RoundKey = (typeof ROUND_ORDER)[number];
+
 export type BracketRoundTemplate = {
-  round: (typeof ROUND_ORDER)[number];
+  round: RoundKey;
   slots: number;
 };
 
 export type BracketGame = {
   id: string;
-  round: (typeof ROUND_ORDER)[number];
+  round: RoundKey;
   slot: number;
   teamA?: string;
   teamB?: string;
@@ -44,7 +46,9 @@ export function buildEmptyBracketGames(): BracketGame[] {
   );
 }
 
-export function readablePicksToRoundMap(rounds: PickRound[]): Record<string, string[]> {
+export function readablePicksToRoundMap(
+  rounds: PickRound[]
+): Record<string, string[]> {
   const normalized = normalizeReadablePicks(rounds);
 
   return Object.fromEntries(
@@ -65,12 +69,16 @@ export function roundMapToReadablePicks(
 
 export function mergeReadablePicks(
   current: PickRound[],
-  patch: Partial<Record<(typeof ROUND_ORDER)[number], string[]>>
+  patch: Partial<Record<RoundKey, string[]>>
 ): PickRound[] {
   const normalized = normalizeReadablePicks(current);
 
-  return normalized.map((round) => ({
-    round: round.round,
-    teams: patch[round.round] ?? round.teams,
-  }));
+  return normalized.map((round) => {
+    const roundKey = round.round as RoundKey;
+
+    return {
+      round: round.round,
+      teams: patch[roundKey] ?? round.teams,
+    };
+  });
 }
