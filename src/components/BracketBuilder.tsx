@@ -20,6 +20,44 @@ type BracketBuilderProps = {
   firstRoundMatchups?: FirstRoundMatchup[];
 };
 
+const FALLBACK_REGION_ORDER = ["East", "West", "South", "Midwest"] as const;
+
+function getFallbackRegionForGame(index: number): string {
+  if (index < 8) return "East";
+  if (index < 16) return "West";
+  if (index < 24) return "South";
+  return "Midwest";
+}
+
+function getFirstRoundRegionLabel(matchup: FirstRoundMatchup | undefined, index: number) {
+  if (matchup && "region" in matchup && typeof matchup.region === "string") {
+    return matchup.region;
+  }
+
+  return getFallbackRegionForGame(index);
+}
+
+function getGameLabel(
+  roundName: string,
+  index: number,
+  matchup?: FirstRoundMatchup
+): string {
+  if (roundName === "Round of 64") {
+    return `${getFirstRoundRegionLabel(matchup, index)} · Game ${index + 1}`;
+  }
+
+  if (roundName === "Final 4") {
+    if (index === 0) return "Semifinal 1 · East vs South";
+    if (index === 1) return "Semifinal 2 · West vs Midwest";
+  }
+
+  if (roundName === "Championship") {
+    return "National Championship";
+  }
+
+  return `Game ${index + 1}`;
+}
+
 function buildFallbackMatchups(rounds: PickRound[]): FirstRoundMatchup[] {
   const normalized = normalizeReadablePicks(rounds);
   const firstRoundName = ROUND_ORDER[0];
@@ -42,11 +80,12 @@ function buildFallbackMatchups(rounds: PickRound[]): FirstRoundMatchup[] {
 
     return {
       gameId: `${firstRoundName}-${index + 1}`,
+      region: getFallbackRegionForGame(index),
       teams: [
         teams[0] ?? { id: `empty-a-${index}`, name: "" },
         teams[1] ?? { id: `empty-b-${index}`, name: "" },
       ],
-    };
+    } as FirstRoundMatchup;
   });
 }
 
@@ -123,6 +162,10 @@ export default function BracketBuilder({
 
                   const selectedValue = round.teams[index] ?? "";
                   const isDisabled = !canEdit || options.length === 0;
+                  const matchup =
+                    roundName === "Round of 64"
+                      ? effectiveFirstRoundMatchups[index]
+                      : undefined;
 
                   return (
                     <div
@@ -130,7 +173,7 @@ export default function BracketBuilder({
                       className="rounded-xl border border-white/10 bg-white/5 p-3"
                     >
                       <div className="mb-2 text-xs font-bold uppercase tracking-[0.16em] text-neutral-400">
-                        Game {index + 1}
+                        {getGameLabel(roundName, index, matchup)}
                       </div>
 
                       <select
@@ -167,6 +210,12 @@ export default function BracketBuilder({
                               team.seed ? `(${team.seed}) ${team.name}` : team.name
                             )
                             .join(" vs ")}
+                        </div>
+                      )}
+
+                      {roundName === "Round of 64" && matchup && (
+                        <div className="mt-2 text-[11px] uppercase tracking-[0.14em] text-neutral-600">
+                          Region: {getFirstRoundRegionLabel(matchup, index)}
                         </div>
                       )}
                     </div>

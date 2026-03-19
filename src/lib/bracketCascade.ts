@@ -8,6 +8,7 @@ import { TeamOption } from "./bracket-data";
 
 export type FirstRoundMatchup = {
   gameId: string;
+  region?: string;
   teams: TeamOption[];
 };
 
@@ -17,6 +18,33 @@ export function getRoundTeamsMap(rounds: PickRound[]): Record<string, string[]> 
   return Object.fromEntries(
     normalized.map((round) => [round.round, [...round.teams]])
   );
+}
+
+function getPreviousRoundFeeders(
+  previousRoundTeams: string[],
+  roundName: string,
+  gameIndex: number
+): [string, string] {
+  if (roundName === "Final 4") {
+    if (gameIndex === 0) {
+      return [
+        previousRoundTeams[0] ?? "",
+        previousRoundTeams[2] ?? "",
+      ];
+    }
+
+    if (gameIndex === 1) {
+      return [
+        previousRoundTeams[1] ?? "",
+        previousRoundTeams[3] ?? "",
+      ];
+    }
+  }
+
+  return [
+    previousRoundTeams[gameIndex * 2] ?? "",
+    previousRoundTeams[gameIndex * 2 + 1] ?? "",
+  ];
 }
 
 export function getOptionsForGame(
@@ -41,8 +69,11 @@ export function getOptionsForGame(
       teams: Array.from({ length: ROUND_SIZES[previousRoundName] }, () => ""),
     };
 
-  const feederA = previousRound.teams[gameIndex * 2] ?? "";
-  const feederB = previousRound.teams[gameIndex * 2 + 1] ?? "";
+  const [feederA, feederB] = getPreviousRoundFeeders(
+    previousRound.teams,
+    roundName,
+    gameIndex
+  );
 
   return [feederA, feederB]
     .filter((teamName) => teamName.trim().length > 0)
