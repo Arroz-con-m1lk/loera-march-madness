@@ -32,8 +32,9 @@ type EspnCompetition = {
 type EspnEvent = {
   id?: string;
   date?: string;
-  links?: { href?: string }[];
+  name?: string;
   shortName?: string;
+  links?: { href?: string }[];
   competitions?: EspnCompetition[];
   status?: {
     type?: {
@@ -78,8 +79,9 @@ function buildDateRange() {
   const start = new Date(now);
   const end = new Date(now);
 
-  start.setDate(start.getDate() - 1);
-  end.setDate(end.getDate() + 4);
+  // Wider range so completed tournament games stay available for scoring
+  start.setDate(start.getDate() - 30);
+  end.setDate(end.getDate() + 7);
 
   return `${yyyymmdd(start)}-${yyyymmdd(end)}`;
 }
@@ -89,6 +91,46 @@ function getTeamLink(
   fallback: string
 ): string {
   return competitor?.team?.links?.[0]?.href ?? fallback;
+}
+
+function cleanTeamName(value?: string) {
+  return (value ?? "").trim();
+}
+
+function canonicalTeamName(competitor?: EspnCompetitor) {
+  return (
+    cleanTeamName(competitor?.team?.displayName) ||
+    cleanTeamName(competitor?.team?.shortDisplayName) ||
+    cleanTeamName(competitor?.team?.abbreviation) ||
+    ""
+  );
+}
+
+function inferRoundLabel(event: EspnEvent, statusDescription: string, shortDetail: string) {
+  const haystack = `${event.name ?? ""} ${event.shortName ?? ""} ${statusDescription} ${shortDetail}`.toLowerCase();
+
+  if (haystack.includes("first four")) return "First Four";
+  if (haystack.includes("round of 64")) return "Round of 64";
+  if (haystack.includes("first round")) return "Round of 64";
+  if (haystack.includes("1st round")) return "Round of 64";
+
+  if (haystack.includes("round of 32")) return "Round of 32";
+  if (haystack.includes("second round")) return "Round of 32";
+  if (haystack.includes("2nd round")) return "Round of 32";
+
+  if (haystack.includes("sweet 16")) return "Sweet 16";
+  if (haystack.includes("elite 8")) return "Elite 8";
+  if (haystack.includes("elite eight")) return "Elite 8";
+
+  if (haystack.includes("final four")) return "Final 4";
+  if (haystack.includes("national semifinal")) return "Final 4";
+  if (haystack.includes("semifinal")) return "Final 4";
+
+  if (haystack.includes("championship")) return "Championship";
+  if (haystack.includes("title game")) return "Championship";
+  if (haystack.includes("national title")) return "Championship";
+
+  return null;
 }
 
 function normalizeEvent(event: EspnEvent) {
@@ -112,20 +154,47 @@ function normalizeEvent(event: EspnEvent) {
       completed: false,
     };
 
+  const awayDisplay =
+    away.team?.shortDisplayName ||
+    away.team?.displayName ||
+    away.team?.abbreviation ||
+    "Away";
+
+  const homeDisplay =
+    home.team?.shortDisplayName ||
+    home.team?.displayName ||
+    home.team?.abbreviation ||
+    "Home";
+
+  const awayCanonical = canonicalTeamName(away);
+  const homeCanonical = canonicalTeamName(home);
+
+  const winnerCanonical = away.winner
+    ? awayCanonical
+    : home.winner
+      ? homeCanonical
+      : null;
+
+  const loserCanonical = away.winner
+    ? homeCanonical
+    : home.winner
+      ? awayCanonical
+      : null;
+
+  const statusDescription = status.description || "Scheduled";
+  const shortDetail = status.shortDetail || formatTimeLabel(event.date);
+  const roundLabel = inferRoundLabel(event, statusDescription, shortDetail);
+
   return {
     id: event.id,
+    name: event.name || event.shortName || `${awayDisplay} vs ${homeDisplay}`,
+    shortName: event.shortName || `${awayDisplay} vs ${homeDisplay}`,
 
-    awayTeam:
-      away.team?.shortDisplayName ||
-      away.team?.displayName ||
-      away.team?.abbreviation ||
-      "Away",
+    awayTeam: awayDisplay,
+    homeTeam: homeDisplay,
 
-    homeTeam:
-      home.team?.shortDisplayName ||
-      home.team?.displayName ||
-      home.team?.abbreviation ||
-      "Home",
+    awayCanonicalTeam: awayCanonical || awayDisplay,
+    homeCanonicalTeam: homeCanonical || homeDisplay,
 
     awaySeed: away.seed ?? undefined,
     homeSeed: home.seed ?? undefined,
@@ -151,30 +220,20 @@ function normalizeEvent(event: EspnEvent) {
     ),
 
     dateLabel: formatDateLabel(event.date),
-
-    timeLabel: status.shortDetail || formatTimeLabel(event.date),
-
+    timeLabel: shortDetail,
     epoch: new Date(event.date).getTime(),
 
     gameState: status.name || "STATUS_UNKNOWN",
-
-    statusDescription: status.description || "Scheduled",
-
+    statusDescription,
     completed: Boolean(status.completed),
 
-    winner:
-      away.winner
-        ? away.team?.displayName
-        : home.winner
-        ? home.team?.displayName
-        : null,
+    roundLabel,
 
-    loser:
-      away.winner
-        ? home.team?.displayName
-        : home.winner
-        ? away.team?.displayName
-        : null,
+    winner: away.winner ? away.team?.displayName : home.winner ? home.team?.displayName : null,
+    loser: away.winner ? home.team?.displayName : home.winner ? away.team?.displayName : null,
+
+    winnerCanonical: winnerCanonical || null,
+    loserCanonical: loserCanonical || null,
 
     awayScore: away.score ? Number(away.score) : null,
     homeScore: home.score ? Number(home.score) : null,
@@ -203,6 +262,7 @@ export async function GET() {
           games: [],
           liveGames: [],
           finals: [],
+          completedByRound: {},
           updatedAt: new Date().toISOString(),
           error: `ESPN request failed with status ${response.status}`,
         },
@@ -235,10 +295,21 @@ export async function GET() {
         )
     );
 
+    const completedByRound = finals.reduce<Record<string, typeof finals>>(
+      (acc, game) => {
+        const key = game.roundLabel ?? "Unclassified";
+        if (!acc[key]) acc[key] = [];
+        acc[key].push(game);
+        return acc;
+      },
+      {}
+    );
+
     return NextResponse.json({
       games: upcomingGames,
       liveGames,
       finals,
+      completedByRound,
       updatedAt: new Date().toISOString(),
       error: "",
     });
@@ -248,6 +319,7 @@ export async function GET() {
         games: [],
         liveGames: [],
         finals: [],
+        completedByRound: {},
         updatedAt: new Date().toISOString(),
         error:
           error instanceof Error
