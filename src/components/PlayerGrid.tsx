@@ -196,6 +196,31 @@ function getEditableBracketsForPlayer(player: Player) {
   return unlocked;
 }
 
+function hasReadablePicks(bracket?: BracketEntry) {
+  return Boolean(
+    bracket?.readablePicks?.some((round) =>
+      round.teams.some((team) => team.trim().length > 0)
+    )
+  );
+}
+
+function isViewableBracket(bracket?: BracketEntry) {
+  if (!bracket) return false;
+
+  return (
+    bracket.submitted ||
+    bracket.locked ||
+    bracket.paid ||
+    hasReadablePicks(bracket) ||
+    Boolean(bracket.championPick?.trim()) ||
+    Boolean(bracket.notes?.trim())
+  );
+}
+
+function getViewableBracketsForPlayer(player: Player) {
+  return getPlayerBrackets(player).filter(isViewableBracket);
+}
+
 function getStatusVisual(status?: Player["status"]) {
   const safeStatus = normalizeStatus(status);
 
@@ -286,9 +311,11 @@ function EntryDots({ count }: { count: number }) {
 function BracketPreviewStrip({
   player,
   bracketRankMap,
+  onSelectBracket,
 }: {
   player: Player;
   bracketRankMap: Record<string, number>;
+  onSelectBracket: (id: string) => void;
 }) {
   const brackets = getPlayerBrackets(player);
 
@@ -298,11 +325,19 @@ function BracketPreviewStrip({
         const bracket = brackets[index];
         const status = getBracketStatus(bracket);
         const eliminated = bracket ? !bracket.championAlive : false;
+        const canView = isViewableBracket(bracket);
 
         return (
-          <div
+          <button
             key={bracket?.id ?? `empty-${index}`}
-            className={`flex items-center justify-between rounded-xl border px-3 py-2 text-xs ${status.rowClass}`}
+            type="button"
+            onClick={() => {
+              if (bracket && canView) onSelectBracket(bracket.id);
+            }}
+            disabled={!canView}
+            className={`flex items-center justify-between rounded-xl border px-3 py-2 text-left text-xs transition ${
+              status.rowClass
+            } ${canView ? "hover:brightness-110 cursor-pointer" : "cursor-default"}`}
           >
             <div className="min-w-0">
               <div className="flex items-center gap-2">
@@ -335,7 +370,7 @@ function BracketPreviewStrip({
                 {status.label}
               </span>
             </div>
-          </div>
+          </button>
         );
       })}
     </div>
@@ -368,6 +403,7 @@ function PlayerCard({
   const liveBracketCount = getLiveBracketCount(player);
   const bestBracketId = getBestBracketIdForPlayer(player, bracketRankMap);
   const editableBrackets = getEditableBracketsForPlayer(player);
+  const viewableBrackets = getViewableBracketsForPlayer(player);
 
   const statusVisual = getStatusVisual(player.status);
   const paymentVisual = getPaymentVisual(player);
@@ -564,6 +600,7 @@ function PlayerCard({
             <BracketPreviewStrip
               player={player}
               bracketRankMap={bracketRankMap}
+              onSelectBracket={onSelectBracket}
             />
           </div>
 
@@ -577,7 +614,7 @@ function PlayerCard({
                 onClick={() => onSelectBracket(bestBracketId)}
                 className="rounded-xl bg-gradient-to-r from-red-600 to-orange-500 px-4 py-3 text-sm font-black uppercase tracking-[0.08em] text-white shadow-lg shadow-red-900/30"
               >
-                View Brackets
+                View Best Bracket
               </button>
 
               {isAdmin && (
@@ -589,6 +626,20 @@ function PlayerCard({
                 </button>
               )}
             </div>
+
+            {viewableBrackets.length > 1 && (
+              <div className="grid gap-2 sm:grid-cols-2">
+                {viewableBrackets.map((bracket) => (
+                  <button
+                    key={bracket.id}
+                    onClick={() => onSelectBracket(bracket.id)}
+                    className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
+                  >
+                    View {bracket.label}
+                  </button>
+                ))}
+              </div>
+            )}
 
             {!isAdmin && canEditOwnBracket && onEditBracket && (
               <div className="grid gap-2 sm:grid-cols-2">
