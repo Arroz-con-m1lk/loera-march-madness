@@ -2,18 +2,35 @@ const TEAM_ALIASES: Record<string, string> = {
   "ole miss": "mississippi",
   "miss st": "mississippi state",
   "mississippi st": "mississippi state",
+
   "unc": "north carolina",
+  "nc state": "north carolina state",
+  "ohio st": "ohio state",
+  "tennessee st": "tennessee state",
+  "kennesaw st": "kennesaw state",
+  "north dakota st": "north dakota state",
+
   "uconn": "connecticut",
   "u conn": "connecticut",
+
   "saint marys": "saint mary's",
   "saint marys ca": "saint mary's",
   "st marys": "saint mary's",
   "st marys ca": "saint mary's",
   "st marys college": "saint mary's",
+
   "st johns": "saint john's",
   "st johns ny": "saint john's",
   "saint johns": "saint john's",
+
+  "saint louis": "saint louis",
+  "st louis": "saint louis",
+
   "uc san diego": "ucsd",
+  "ucf": "central florida",
+  "ucla": "ucla",
+  "vcu": "virginia commonwealth",
+
   "byu": "brigham young",
   "lsu": "louisiana state",
   "smu": "southern methodist",
@@ -21,35 +38,44 @@ const TEAM_ALIASES: Record<string, string> = {
   "usc": "southern california",
   "uab": "alabama birmingham",
   "utah st": "utah state",
-  "nc state": "north carolina state",
   "pitt": "pittsburgh",
+
   "texas a&m": "texas am",
   "texas a and m": "texas am",
-  "prairie view a&m": "prairie view",
-  "prairie view a and m": "prairie view",
+
+  "prairie view a&m": "prairie view am",
+  "prairie view a and m": "prairie view am",
+  "prairie view": "prairie view am",
+
   "miami fl": "miami",
   "miami florida": "miami",
   "miami hurricanes": "miami",
+
   "miami oh": "miami ohio",
   "miami ohio": "miami ohio",
   "miamioh": "miami ohio",
-  "saint louis": "saint louis",
-  "st louis": "saint louis",
+
   "cal baptist": "california baptist",
-  "ucf": "central florida",
-  "ucla": "ucla",
-  "vcu": "virginia commonwealth",
+
   "queens nc": "queens",
   "queens n c": "queens",
-  "tennessee st": "tennessee state",
-  "kennesaw st": "kennesaw state",
-  "north dakota st": "north dakota state",
-  "ohio st": "ohio state",
-  "long island university": "long island",
-  "liu": "long island",
+  "queens nc charlotte": "queens",
+
+  "long island university": "liu",
+  "long island": "liu",
+  "liu brooklyn": "liu",
+
   "ill st": "illinois state",
   "loyola chi": "loyola chicago",
   "loyola chicago ramblers": "loyola chicago",
+
+  "southern miss": "southern mississippi",
+  "uc san diego tritons": "ucsd",
+  "connecticut huskies": "connecticut",
+  "saint john's red storm": "saint john's",
+  "saint mary's gaels": "saint mary's",
+  "texas am aggies": "texas am",
+  "prairie view am panthers": "prairie view am",
 };
 
 const MASCOT_WORDS = new Set([
@@ -125,8 +151,6 @@ const MASCOT_WORDS = new Set([
   "ramblers",
   "quakers",
   "bison",
-  "quakers",
-  "spartans",
   "wolves",
   "falcons",
   "panthers",
@@ -134,6 +158,8 @@ const MASCOT_WORDS = new Set([
   "red",
   "flash",
   "flashes",
+  "tritons",
+  "quakers",
 ]);
 
 function basicClean(name: string): string {
@@ -142,6 +168,9 @@ function basicClean(name: string): string {
     .replace(/&/g, " and ")
     .replace(/\bsaint\b/g, "saint")
     .replace(/\bst\b/g, "saint")
+    .replace(/\bn\.?\s*c\.?\b/g, "nc")
+    .replace(/\bfl\.?\b/g, "fl")
+    .replace(/\boh\.?\b/g, "oh")
     .replace(/[.'’(),/-]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -167,6 +196,16 @@ function stripStateQualifiers(name: string): string {
     .trim();
 }
 
+function stripTrailingCampusHints(name: string): string {
+  return name
+    .replace(/\bnc\b/g, "")
+    .replace(/\bca\b/g, "")
+    .replace(/\bfl\b/g, "")
+    .replace(/\boh\b/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function normalizeForCompare(name: string): string {
   const cleaned = basicClean(name);
   const aliased = applyAlias(cleaned);
@@ -176,8 +215,7 @@ function normalizeForCompare(name: string): string {
 }
 
 export function normalizeTeamName(name: string): string {
-  const normalized = normalizeForCompare(name);
-  return normalized;
+  return normalizeForCompare(name);
 }
 
 export function teamsMatch(a?: string, b?: string): boolean {
@@ -195,21 +233,34 @@ export function teamsMatch(a?: string, b?: string): boolean {
   const aState = stripStateQualifiers(aNormalized);
   const bState = stripStateQualifiers(bNormalized);
 
+  const aCampus = stripTrailingCampusHints(aState);
+  const bCampus = stripTrailingCampusHints(bState);
+
   if (
     aClean === bClean ||
     aAlias === bAlias ||
     aNormalized === bNormalized ||
-    aState === bState
+    aState === bState ||
+    aCampus === bCampus
   ) {
     return true;
   }
 
   if (!aNormalized || !bNormalized) return false;
 
-  const shorter = aNormalized.length <= bNormalized.length ? aNormalized : bNormalized;
-  const longer = aNormalized.length > bNormalized.length ? aNormalized : bNormalized;
+  const shorter =
+    aNormalized.length <= bNormalized.length ? aNormalized : bNormalized;
+  const longer =
+    aNormalized.length > bNormalized.length ? aNormalized : bNormalized;
 
   if (shorter.length >= 5 && longer.includes(shorter)) {
+    return true;
+  }
+
+  const shorterCampus = aCampus.length <= bCampus.length ? aCampus : bCampus;
+  const longerCampus = aCampus.length > bCampus.length ? aCampus : bCampus;
+
+  if (shorterCampus.length >= 5 && longerCampus.includes(shorterCampus)) {
     return true;
   }
 

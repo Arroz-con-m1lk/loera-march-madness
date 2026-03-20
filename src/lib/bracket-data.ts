@@ -84,7 +84,7 @@ export const FIRST_ROUND_MATCHUPS: FirstRoundMatchup[] = [
     gameId: "round-of-64-3",
     region: "East",
     teams: [
-      { id: "st-johns", name: "St. John's", seed: "5" },
+      { id: "saint-johns", name: "Saint John's", seed: "5" },
       { id: "northern-iowa", name: "Northern Iowa", seed: "12" },
     ],
   },
@@ -93,7 +93,7 @@ export const FIRST_ROUND_MATCHUPS: FirstRoundMatchup[] = [
     region: "East",
     teams: [
       { id: "kansas", name: "Kansas", seed: "4" },
-      { id: "cal-baptist", name: "Cal Baptist", seed: "13" },
+      { id: "california-baptist", name: "California Baptist", seed: "13" },
     ],
   },
   {
@@ -124,16 +124,17 @@ export const FIRST_ROUND_MATCHUPS: FirstRoundMatchup[] = [
     gameId: "round-of-64-8",
     region: "East",
     teams: [
-      { id: "uconn", name: "UConn", seed: "2" },
+      { id: "connecticut", name: "Connecticut", seed: "2" },
       { id: "furman", name: "Furman", seed: "15" },
     ],
   },
+
   {
     gameId: "round-of-64-9",
     region: "West",
     teams: [
       { id: "arizona", name: "Arizona", seed: "1" },
-      { id: "long-island", name: "Long Island", seed: "16" },
+      { id: "liu", name: "LIU", seed: "16" },
     ],
   },
   {
@@ -180,7 +181,7 @@ export const FIRST_ROUND_MATCHUPS: FirstRoundMatchup[] = [
     gameId: "round-of-64-15",
     region: "West",
     teams: [
-      { id: "miami-fl", name: "Miami (FL)", seed: "7" },
+      { id: "miami", name: "Miami", seed: "7" },
       { id: "missouri", name: "Missouri", seed: "10" },
     ],
   },
@@ -189,15 +190,16 @@ export const FIRST_ROUND_MATCHUPS: FirstRoundMatchup[] = [
     region: "West",
     teams: [
       { id: "purdue", name: "Purdue", seed: "2" },
-      { id: "queens-nc", name: "Queens (N.C.)", seed: "15" },
+      { id: "queens", name: "Queens", seed: "15" },
     ],
   },
+
   {
     gameId: "round-of-64-17",
     region: "South",
     teams: [
       { id: "florida", name: "Florida", seed: "1" },
-      { id: "prairie-view-am", name: "Prairie View A&M", seed: "16" },
+      { id: "prairie-view", name: "Prairie View A&M", seed: "16" },
     ],
   },
   {
@@ -256,6 +258,7 @@ export const FIRST_ROUND_MATCHUPS: FirstRoundMatchup[] = [
       { id: "idaho", name: "Idaho", seed: "15" },
     ],
   },
+
   {
     gameId: "round-of-64-25",
     region: "Midwest",
@@ -293,7 +296,7 @@ export const FIRST_ROUND_MATCHUPS: FirstRoundMatchup[] = [
     region: "Midwest",
     teams: [
       { id: "tennessee", name: "Tennessee", seed: "6" },
-      { id: "miami-oh", name: "Miami (Ohio)", seed: "11" },
+      { id: "miami-ohio", name: "Miami (Ohio)", seed: "11" },
     ],
   },
   {

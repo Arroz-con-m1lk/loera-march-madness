@@ -8,58 +8,44 @@ import {
   type PickRound,
 } from "@/lib/bracketRounds";
 import { FIRST_ROUND_MATCHUPS } from "@/lib/bracket-data";
-import { teamsMatch } from "@/lib/normalizeTeamName";
+import { normalizeTeamName, teamsMatch } from "@/lib/normalizeTeamName";
 
-type EspnTeam = {
-  displayName?: string;
-  abbreviation?: string;
-  shortDisplayName?: string;
+type NcaaTeamNames = {
+  full?: string;
+  short?: string;
+  seo?: string;
+  char6?: string;
 };
 
-type EspnCompetitor = {
-  homeAway?: "home" | "away";
+type NcaaSide = {
   winner?: boolean;
-  score?: string;
-  team?: EspnTeam;
+  score?: string | number;
+  seed?: string | number;
+  names?: NcaaTeamNames;
 };
 
-type EspnCompetition = {
-  competitors?: EspnCompetitor[];
-  status?: {
-    type?: {
-      name?: string;
-      state?: string;
-      description?: string;
-      shortDetail?: string;
-      completed?: boolean;
-    };
-  };
-};
-
-type EspnEvent = {
+type NcaaGameNode = {
   id?: string;
-  date?: string;
-  name?: string;
-  shortName?: string;
-  competitions?: EspnCompetition[];
-  status?: {
-    type?: {
-      name?: string;
-      state?: string;
-      description?: string;
-      shortDetail?: string;
-      completed?: boolean;
-    };
-  };
+  gameID?: string;
+  contestName?: string;
+  startTimeEpoch?: number;
+  gameState?: string;
+  finalMessage?: string;
+  currentPeriod?: string | number;
+  away?: NcaaSide;
+  home?: NcaaSide;
 };
 
-type EspnScoreboardResponse = {
-  events?: EspnEvent[];
+type NcaaScoreboardEntry = {
+  game?: NcaaGameNode;
+} & NcaaGameNode;
+
+type NcaaScoreboardResponse = {
+  games?: NcaaScoreboardEntry[];
 };
 
-type NormalizedFinalGame = {
+type NormalizedCompletedGame = {
   id: string;
-  completed: boolean;
   awayTeam: string;
   homeTeam: string;
   winner: string | null;
@@ -68,86 +54,124 @@ type NormalizedFinalGame = {
   homeScore: number | null;
 };
 
-function yyyymmdd(date: Date) {
-  const y = date.getFullYear();
+function yyyymmddParts(date: Date) {
+  const y = String(date.getFullYear());
   const m = String(date.getMonth() + 1).padStart(2, "0");
   const d = String(date.getDate()).padStart(2, "0");
-  return `${y}${m}${d}`;
+  return { y, m, d };
 }
 
-function buildDateRange() {
+function toNcaaDatePath(date: Date) {
+  const { y, m, d } = yyyymmddParts(date);
+  return `${y}/${m}/${d}`;
+}
+
+function buildDatesToFetch() {
   const now = new Date();
-  const start = new Date(now);
-  const end = new Date(now);
+  const dates: Date[] = [];
 
-  start.setDate(start.getDate() - 30);
-  end.setDate(end.getDate() + 7);
+  for (let offset = 21; offset >= 0; offset -= 1) {
+    const date = new Date(now);
+    date.setDate(now.getDate() - offset);
+    dates.push(date);
+  }
 
-  return `${yyyymmdd(start)}-${yyyymmdd(end)}`;
+  return dates;
 }
 
-function cleanTeamName(value?: string) {
-  return (value ?? "").trim();
+function firstNonEmpty(...values: Array<string | undefined>) {
+  for (const value of values) {
+    const cleaned = (value ?? "").trim();
+    if (cleaned) return cleaned;
+  }
+  return "";
 }
 
-function canonicalTeamName(competitor?: EspnCompetitor) {
-  return (
-    cleanTeamName(competitor?.team?.displayName) ||
-    cleanTeamName(competitor?.team?.shortDisplayName) ||
-    cleanTeamName(competitor?.team?.abbreviation) ||
-    ""
+function canonicalNcaaTeamName(side?: NcaaSide) {
+  return firstNonEmpty(
+    side?.names?.full,
+    side?.names?.short,
+    side?.names?.seo,
+    side?.names?.char6
   );
 }
 
-function normalizeEspnEvent(event: EspnEvent): NormalizedFinalGame | null {
-  const competition = event.competitions?.[0];
-  const competitors = competition?.competitors ?? [];
+function parseScore(value?: string | number) {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
 
-  const away = competitors.find((team) => team.homeAway === "away");
-  const home = competitors.find((team) => team.homeAway === "home");
+function isCompletedGame(node: NcaaGameNode) {
+  const gameState = String(node.gameState ?? "").toLowerCase();
+  const finalMessage = String(node.finalMessage ?? "").toLowerCase();
 
-  if (!away || !home || !event.id) {
+  return (
+    gameState.includes("final") ||
+    finalMessage.includes("final") ||
+    Boolean(node.away?.winner) ||
+    Boolean(node.home?.winner)
+  );
+}
+
+function normalizeNcaaEntry(
+  entry: NcaaScoreboardEntry
+): NormalizedCompletedGame | null {
+  const node = entry.game ?? entry;
+  const awayTeam = canonicalNcaaTeamName(node.away);
+  const homeTeam = canonicalNcaaTeamName(node.home);
+
+  if (!awayTeam || !homeTeam || !isCompletedGame(node)) {
     return null;
   }
 
-  const status =
-    competition?.status?.type ??
-    event.status?.type ?? {
-      completed: false,
-    };
+  const awayWon = Boolean(node.away?.winner);
+  const homeWon = Boolean(node.home?.winner);
 
-  const awayCanonical = canonicalTeamName(away);
-  const homeCanonical = canonicalTeamName(home);
+  let winner: string | null = null;
+  let loser: string | null = null;
 
-  const winner = away.winner
-    ? awayCanonical
-    : home.winner
-      ? homeCanonical
-      : null;
+  if (awayWon && !homeWon) {
+    winner = awayTeam;
+    loser = homeTeam;
+  } else if (homeWon && !awayWon) {
+    winner = homeTeam;
+    loser = awayTeam;
+  } else {
+    const awayScore = parseScore(node.away?.score);
+    const homeScore = parseScore(node.home?.score);
 
-  const loser = away.winner
-    ? homeCanonical
-    : home.winner
-      ? awayCanonical
-      : null;
+    if (awayScore !== null && homeScore !== null) {
+      if (awayScore > homeScore) {
+        winner = awayTeam;
+        loser = homeTeam;
+      } else if (homeScore > awayScore) {
+        winner = homeTeam;
+        loser = awayTeam;
+      }
+    }
+  }
+
+  if (!winner || !loser) {
+    return null;
+  }
 
   return {
-    id: event.id,
-    completed: Boolean(status.completed),
-    awayTeam: awayCanonical,
-    homeTeam: homeCanonical,
+    id: String(node.id ?? node.gameID ?? `${awayTeam}-${homeTeam}`),
+    awayTeam,
+    homeTeam,
     winner,
     loser,
-    awayScore: away.score ? Number(away.score) : null,
-    homeScore: home.score ? Number(home.score) : null,
+    awayScore: parseScore(node.away?.score),
+    homeScore: parseScore(node.home?.score),
   };
 }
 
-async function fetchCompletedGames(): Promise<NormalizedFinalGame[]> {
-  const dates = buildDateRange();
-  const url =
-    `https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard` +
-    `?dates=${dates}&groups=50&limit=500`;
+async function fetchCompletedGamesForDate(
+  date: Date
+): Promise<NormalizedCompletedGame[]> {
+  const datePath = toNcaaDatePath(date);
+  const url = `https://data.ncaa.com/casablanca/scoreboard/basketball-men/d1/${datePath}/scoreboard.json`;
 
   const response = await fetch(url, {
     next: { revalidate: 60 },
@@ -158,75 +182,134 @@ async function fetchCompletedGames(): Promise<NormalizedFinalGame[]> {
   });
 
   if (!response.ok) {
-    throw new Error(`ESPN request failed with status ${response.status}`);
+    return [];
   }
 
-  const data = (await response.json()) as EspnScoreboardResponse;
+  const data = (await response.json()) as NcaaScoreboardResponse;
 
-  return (data.events ?? [])
-    .map(normalizeEspnEvent)
-    .filter((game): game is NormalizedFinalGame => Boolean(game && game.completed));
+  return (data.games ?? [])
+    .map(normalizeNcaaEntry)
+    .filter((game): game is NormalizedCompletedGame => Boolean(game));
+}
+
+async function fetchCompletedGames(): Promise<NormalizedCompletedGame[]> {
+  const dates = buildDatesToFetch();
+  const results = await Promise.all(dates.map(fetchCompletedGamesForDate));
+  const deduped = new Map<string, NormalizedCompletedGame>();
+
+  for (const games of results) {
+    for (const game of games) {
+      deduped.set(game.id, game);
+    }
+  }
+
+  return Array.from(deduped.values());
+}
+
+function teamsSoftMatch(a: string, b: string) {
+  if (teamsMatch(a, b)) return true;
+
+  const aNorm = normalizeTeamName(a);
+  const bNorm = normalizeTeamName(b);
+
+  if (!aNorm || !bNorm) return false;
+  if (aNorm === bNorm) return true;
+
+  const shorter = aNorm.length <= bNorm.length ? aNorm : bNorm;
+  const longer = aNorm.length > bNorm.length ? aNorm : bNorm;
+
+  return shorter.length >= 4 && longer.includes(shorter);
 }
 
 function findCompletedWinner(
-  completedGames: NormalizedFinalGame[],
+  completedGames: NormalizedCompletedGame[],
   expectedTeamA: string,
   expectedTeamB: string
 ): string {
   const matchedGame = completedGames.find((game) => {
-    const gameHasBothTeams =
-      (teamsMatch(game.awayTeam, expectedTeamA) &&
-        teamsMatch(game.homeTeam, expectedTeamB)) ||
-      (teamsMatch(game.awayTeam, expectedTeamB) &&
-        teamsMatch(game.homeTeam, expectedTeamA));
+    const directMatch =
+      (teamsSoftMatch(game.awayTeam, expectedTeamA) &&
+        teamsSoftMatch(game.homeTeam, expectedTeamB)) ||
+      (teamsSoftMatch(game.awayTeam, expectedTeamB) &&
+        teamsSoftMatch(game.homeTeam, expectedTeamA));
 
-    return gameHasBothTeams && Boolean(game.winner);
+    return directMatch && Boolean(game.winner);
   });
 
   if (!matchedGame?.winner) {
     return "";
   }
 
-  if (teamsMatch(matchedGame.winner, expectedTeamA)) {
+  if (teamsSoftMatch(matchedGame.winner, expectedTeamA)) {
     return expectedTeamA;
   }
 
-  if (teamsMatch(matchedGame.winner, expectedTeamB)) {
+  if (teamsSoftMatch(matchedGame.winner, expectedTeamB)) {
     return expectedTeamB;
   }
 
   return "";
 }
 
-function buildAutomaticResults(completedGames: NormalizedFinalGame[]): PickRound[] {
+function getPreviousRoundFeeders(
+  previousRoundTeams: string[],
+  roundName: string,
+  gameIndex: number
+): [string, string] {
+  if (roundName === "Final 4") {
+    if (gameIndex === 0) {
+      return [previousRoundTeams[0] ?? "", previousRoundTeams[2] ?? ""];
+    }
+
+    if (gameIndex === 1) {
+      return [previousRoundTeams[1] ?? "", previousRoundTeams[3] ?? ""];
+    }
+  }
+
+  return [
+    previousRoundTeams[gameIndex * 2] ?? "",
+    previousRoundTeams[gameIndex * 2 + 1] ?? "",
+  ];
+}
+
+function buildAutomaticResults(
+  completedGames: NormalizedCompletedGame[]
+): PickRound[] {
   const resultsByRound: Record<string, string[]> = Object.fromEntries(
-    ROUND_ORDER.map((round) => [round, Array.from({ length: ROUND_SIZES[round] }, () => "")])
+    ROUND_ORDER.map((round) => [
+      round,
+      Array.from({ length: ROUND_SIZES[round] }, () => ""),
+    ])
   );
 
-  const round64Winners = FIRST_ROUND_MATCHUPS.map((matchup) => {
+  resultsByRound["Round of 64"] = FIRST_ROUND_MATCHUPS.map((matchup) => {
     const teamA = matchup.teams[0]?.name ?? "";
     const teamB = matchup.teams[1]?.name ?? "";
     return findCompletedWinner(completedGames, teamA, teamB);
   });
 
-  resultsByRound["Round of 64"] = round64Winners;
-
-  for (let roundIndex = 1; roundIndex < ROUND_ORDER.length; roundIndex++) {
+  for (let roundIndex = 1; roundIndex < ROUND_ORDER.length; roundIndex += 1) {
     const roundName = ROUND_ORDER[roundIndex];
     const previousRoundName = ROUND_ORDER[roundIndex - 1];
     const previousWinners = resultsByRound[previousRoundName] ?? [];
     const slotCount = ROUND_SIZES[roundName];
 
-    resultsByRound[roundName] = Array.from({ length: slotCount }, (_, gameIndex) => {
-      const feederA = previousWinners[gameIndex * 2] ?? "";
-      const feederB = previousWinners[gameIndex * 2 + 1] ?? "";
+    resultsByRound[roundName] = Array.from(
+      { length: slotCount },
+      (_, gameIndex) => {
+        const [feederA, feederB] = getPreviousRoundFeeders(
+          previousWinners,
+          roundName,
+          gameIndex
+        );
 
-      if (!feederA || !feederB) {
-        return "";
+        if (!feederA || !feederB) {
+          return "";
+        }
+
+        return findCompletedWinner(completedGames, feederA, feederB);
       }
-
-      return findCompletedWinner(completedGames, feederA, feederB);
-    });
+    );
   }
 
   return normalizeReadablePicks(
@@ -235,6 +318,20 @@ function buildAutomaticResults(completedGames: NormalizedFinalGame[]): PickRound
       teams: resultsByRound[round] ?? [],
     }))
   );
+}
+
+function computeChampionAlive(
+  championPick: string | null | undefined,
+  completedGames: NormalizedCompletedGame[]
+) {
+  const trimmed = (championPick ?? "").trim();
+  if (!trimmed) return true;
+
+  const eliminated = completedGames.some(
+    (game) => game.loser && teamsSoftMatch(game.loser, trimmed)
+  );
+
+  return !eliminated;
 }
 
 export async function GET() {
@@ -291,6 +388,28 @@ export async function GET() {
 
     const automaticResults = buildAutomaticResults(completedGames);
 
+    console.log("COMPLETED GAMES COUNT:", completedGames.length);
+    console.log(
+      "COMPLETED GAMES SAMPLE:",
+      completedGames.slice(0, 10).map((game) => ({
+        awayTeam: game.awayTeam,
+        homeTeam: game.homeTeam,
+        winner: game.winner,
+        loser: game.loser,
+      }))
+    );
+    console.log(
+      "FIRST MATCHUP SAMPLE:",
+      FIRST_ROUND_MATCHUPS.slice(0, 5).map((matchup) => ({
+        teamA: matchup.teams[0]?.name,
+        teamB: matchup.teams[1]?.name,
+      }))
+    );
+    console.log(
+      "ROUND OF 64 AUTO RESULTS:",
+      automaticResults.find((round) => round.round === "Round of 64")
+    );
+
     const playersWithBrackets = (playersRes.data ?? []).map((player) => {
       const playerBrackets = (bracketsRes.data ?? [])
         .filter((bracket) => bracket.player_id === player.id)
@@ -300,6 +419,10 @@ export async function GET() {
           );
 
           const computedScore = getBracketScore(readablePicks, automaticResults);
+          const championAlive = computeChampionAlive(
+            bracket.champion_pick,
+            completedGames
+          );
 
           return {
             id: bracket.id,
@@ -312,9 +435,9 @@ export async function GET() {
             submitted: !!bracket.submitted,
             locked: !!bracket.locked,
             score: computedScore,
-            championAlive: bracket.champion_alive ?? true,
+            championAlive,
             championPick: bracket.champion_pick ?? undefined,
-            busted: !!bracket.busted,
+            busted: !championAlive,
             readablePicks,
           };
         });
@@ -353,6 +476,7 @@ export async function GET() {
     return NextResponse.json({
       players: playersWithBrackets,
       currentResults: automaticResults,
+      completedGames,
       updatedAt: new Date().toISOString(),
     });
   } catch (error) {
