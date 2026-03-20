@@ -99,8 +99,7 @@ function getBracketStatus(bracket?: BracketEntry) {
       label: "Open",
       detail: "Open slot",
       badgeClass: "bg-neutral-700 text-neutral-300",
-      rowClass:
-        "border-dashed border-white/10 bg-black/20 text-neutral-400",
+      rowClass: "border-dashed border-white/10 bg-black/20 text-neutral-400",
     };
   }
 
@@ -189,7 +188,9 @@ function getBestBracketIdForPlayer(
 function getEditableBracketsForPlayer(player: Player) {
   const brackets = getPlayerBrackets(player);
 
-  const paidUnlocked = brackets.filter((bracket) => bracket.paid && !bracket.locked);
+  const paidUnlocked = brackets.filter(
+    (bracket) => bracket.paid && !bracket.locked
+  );
   if (paidUnlocked.length > 0) return paidUnlocked;
 
   const unlocked = brackets.filter((bracket) => !bracket.locked);
@@ -215,10 +216,6 @@ function isViewableBracket(bracket?: BracketEntry) {
     Boolean(bracket.championPick?.trim()) ||
     Boolean(bracket.notes?.trim())
   );
-}
-
-function getViewableBracketsForPlayer(player: Player) {
-  return getPlayerBrackets(player).filter(isViewableBracket);
 }
 
 function getStatusVisual(status?: Player["status"]) {
@@ -337,7 +334,7 @@ function BracketPreviewStrip({
             disabled={!canView}
             className={`flex items-center justify-between rounded-xl border px-3 py-2 text-left text-xs transition ${
               status.rowClass
-            } ${canView ? "hover:brightness-110 cursor-pointer" : "cursor-default"}`}
+            } ${canView ? "cursor-pointer hover:brightness-110" : "cursor-default"}`}
           >
             <div className="min-w-0">
               <div className="flex items-center gap-2">
@@ -403,7 +400,6 @@ function PlayerCard({
   const liveBracketCount = getLiveBracketCount(player);
   const bestBracketId = getBestBracketIdForPlayer(player, bracketRankMap);
   const editableBrackets = getEditableBracketsForPlayer(player);
-  const viewableBrackets = getViewableBracketsForPlayer(player);
 
   const statusVisual = getStatusVisual(player.status);
   const paymentVisual = getPaymentVisual(player);
@@ -415,7 +411,9 @@ function PlayerCard({
   const isOwnCard =
     currentViewerName?.trim().toLowerCase() ===
     player.name.trim().toLowerCase();
-  const canEditOwnBracket = Boolean(isOwnCard && editableBrackets.length > 0 && onEditBracket);
+  const canEditOwnBracket = Boolean(
+    isOwnCard && editableBrackets.length > 0 && onEditBracket
+  );
 
   const heroImage =
     lockedPaidBrackets[0]?.image ?? brackets[0]?.image ?? player.avatarImage;
@@ -426,10 +424,10 @@ function PlayerCard({
         isOut
           ? "border-neutral-700 bg-neutral-900/70 opacity-50 grayscale"
           : isBusted
-          ? "border-neutral-700 bg-gradient-to-br from-zinc-900 via-black to-zinc-950 opacity-70 grayscale-[0.65] saturate-50"
-          : safeStatus === "maybe"
-          ? "border-amber-400/20 bg-gradient-to-br from-amber-500/10 via-neutral-950 to-neutral-900 hover:-translate-y-1 hover:shadow-2xl"
-          : "border-white/10 bg-gradient-to-br from-neutral-900 via-neutral-950 to-black hover:-translate-y-1 hover:shadow-2xl"
+            ? "border-neutral-700 bg-gradient-to-br from-zinc-900 via-black to-zinc-950 opacity-70 grayscale-[0.65] saturate-50"
+            : safeStatus === "maybe"
+              ? "border-amber-400/20 bg-gradient-to-br from-amber-500/10 via-neutral-950 to-neutral-900 hover:-translate-y-1 hover:shadow-2xl"
+              : "border-white/10 bg-gradient-to-br from-neutral-900 via-neutral-950 to-black hover:-translate-y-1 hover:shadow-2xl"
       }`}
     >
       <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-red-600 via-orange-400 to-red-600" />
@@ -476,10 +474,10 @@ function PlayerCard({
               {player.grandmaMode
                 ? "AI bracket menace"
                 : safeStatus === "out"
-                ? "Not joining"
-                : safeStatus === "maybe"
-                ? "Game-time decision"
-                : "Confirmed entry holder"}
+                  ? "Not joining"
+                  : safeStatus === "maybe"
+                    ? "Game-time decision"
+                    : "Confirmed entry holder"}
             </div>
           </div>
         </div>
@@ -614,7 +612,7 @@ function PlayerCard({
                 onClick={() => onSelectBracket(bestBracketId)}
                 className="rounded-xl bg-gradient-to-r from-red-600 to-orange-500 px-4 py-3 text-sm font-black uppercase tracking-[0.08em] text-white shadow-lg shadow-red-900/30"
               >
-                View Best Bracket
+                Open Top Bracket
               </button>
 
               {isAdmin && (
@@ -626,20 +624,6 @@ function PlayerCard({
                 </button>
               )}
             </div>
-
-            {viewableBrackets.length > 1 && (
-              <div className="grid gap-2 sm:grid-cols-2">
-                {viewableBrackets.map((bracket) => (
-                  <button
-                    key={bracket.id}
-                    onClick={() => onSelectBracket(bracket.id)}
-                    className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10"
-                  >
-                    View {bracket.label}
-                  </button>
-                ))}
-              </div>
-            )}
 
             {!isAdmin && canEditOwnBracket && onEditBracket && (
               <div className="grid gap-2 sm:grid-cols-2">
