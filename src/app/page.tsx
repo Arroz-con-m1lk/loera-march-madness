@@ -866,7 +866,7 @@ export default function Home() {
 
             <WinProbabilityPanel rankedBracketCards={rankedBracketCards} />
 
-            <BracketDeathAlerts players={players} />
+            <BracketDeathAlerts />
 
             <div className="grid gap-8 lg:grid-cols-[1.15fr_0.85fr]">
               <ChatBox messages={chatMessages} onAddMessage={addChatMessage} />
