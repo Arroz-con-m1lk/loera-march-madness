@@ -7,12 +7,9 @@ import {
 } from "@/lib/bracketRounds";
 import { teamsMatch } from "@/lib/normalizeTeamName";
 
-type ResultsRow = {
-  id: string;
-  label: string;
-  readable_results: PickRound[] | null;
-  updated_at?: string | null;
-};
+function normalizeName(value: string | null | undefined) {
+  return (value ?? "").trim().toLowerCase();
+}
 
 function getChampionAliveFromResults(
   championPick: string | null | undefined,
@@ -42,6 +39,78 @@ function getChampionAliveFromResults(
   }
 
   return appearsInResults;
+}
+
+function didTeamLoseBeforeRound(
+  team: string,
+  roundIndex: number,
+  officialResults: PickRound[]
+) {
+  const normalizedTeam = normalizeName(team);
+
+  for (let i = 0; i < roundIndex; i += 1) {
+    const priorRound = officialResults[i];
+    const winners = priorRound?.teams ?? [];
+    const anyPriorResultsEntered = winners.some(
+      (winner) => winner.trim().length > 0
+    );
+
+    if (!anyPriorResultsEntered) {
+      continue;
+    }
+
+    const stillAliveInPriorRound = winners.some(
+      (winner) => normalizeName(winner) === normalizedTeam
+    );
+
+    if (!stillAliveInPriorRound) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function getBracketBusted(
+  readablePicks: PickRound[],
+  officialResults: PickRound[]
+) {
+  const normalizedPicks = normalizeReadablePicks(readablePicks);
+  const normalizedResults = normalizeReadablePicks(officialResults);
+
+  for (let roundIndex = 0; roundIndex < normalizedPicks.length; roundIndex += 1) {
+    const pickRound = normalizedPicks[roundIndex];
+    const resultRound = normalizedResults[roundIndex];
+    const picks = pickRound?.teams ?? [];
+    const winners = resultRound?.teams ?? [];
+
+    for (let i = 0; i < picks.length; i += 1) {
+      const pickedTeam = picks[i]?.trim();
+      if (!pickedTeam) continue;
+
+      const officialWinner = winners[i]?.trim();
+
+      if (officialWinner) {
+        if (normalizeName(officialWinner) === normalizeName(pickedTeam)) {
+          continue;
+        }
+
+        continue;
+      }
+
+      const deadEarlier = didTeamLoseBeforeRound(
+        pickedTeam,
+        roundIndex,
+        normalizedResults
+      );
+
+      if (!deadEarlier) {
+        return false;
+      }
+    }
+  }
+
+  return true;
 }
 
 export async function GET() {
@@ -127,6 +196,7 @@ export async function GET() {
           bracket.champion_pick,
           officialResults
         );
+        const busted = getBracketBusted(readablePicks, officialResults);
 
         return {
           id: bracket.id,
@@ -141,7 +211,7 @@ export async function GET() {
           score: computedScore,
           championAlive,
           championPick: bracket.champion_pick ?? undefined,
-          busted: !championAlive,
+          busted,
           readablePicks,
         };
       });
@@ -151,9 +221,9 @@ export async function GET() {
       0
     );
 
-    const allDead =
+    const allBusted =
       playerBrackets.length > 0 &&
-      playerBrackets.every((bracket) => bracket.championAlive === false);
+      playerBrackets.every((bracket) => bracket.busted === true);
 
     const paidAny = playerBrackets.some((bracket) => bracket.paid);
     const submittedAny = playerBrackets.some((bracket) => bracket.submitted);
@@ -170,7 +240,7 @@ export async function GET() {
             : "online",
       status: player.status ?? "online",
       score: totalScore,
-      championAlive: !allDead,
+      championAlive: !allBusted,
       paid: paidAny,
       submitted: submittedAny,
       brackets: playerBrackets,

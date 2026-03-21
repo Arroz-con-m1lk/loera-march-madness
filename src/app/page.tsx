@@ -36,6 +36,11 @@ type DbChatMessage = {
   created_at: string;
 };
 
+type PickRound = {
+  round: string;
+  teams: string[];
+};
+
 type RankedBracketCard = {
   id: string;
   playerName: string;
@@ -172,6 +177,7 @@ function getActiveChatIdentity(): {
 export default function Home() {
   const router = useRouter();
   const currentViewerName = getActiveChatIdentity().name;
+
   const fallbackChatMessages: ChatMessage[] = [
     {
       id: 1,
@@ -215,6 +221,7 @@ export default function Home() {
   const [showBreakingNews, setShowBreakingNews] = useState(false);
   const [finalGames, setFinalGames] = useState<FinalGame[]>([]);
   const [deathAlerts, setDeathAlerts] = useState<string[]>([]);
+  const [officialResults, setOfficialResults] = useState<PickRound[]>([]);
   const previousLeaderId = useRef<string | null>(null);
   const processedBustKeys = useRef<Set<string>>(new Set());
 
@@ -295,6 +302,10 @@ export default function Home() {
           return data.players;
         });
       }
+
+      if (Array.isArray(data.officialResults)) {
+        setOfficialResults(data.officialResults);
+      }
     } catch (error) {
       console.error("Failed to refresh pool state", error);
     }
@@ -311,7 +322,9 @@ export default function Home() {
 
         const data = await res.json();
 
-        if (active && Array.isArray(data.players)) {
+        if (!active) return;
+
+        if (Array.isArray(data.players)) {
           setPlayers((prev) => {
             const prevString = JSON.stringify(prev);
             const nextString = JSON.stringify(data.players);
@@ -323,6 +336,12 @@ export default function Home() {
             return data.players;
           });
         }
+
+        if (Array.isArray(data.officialResults)) {
+          setOfficialResults(data.officialResults);
+        } else {
+          setOfficialResults([]);
+        }
       } catch (error) {
         console.error("Failed to load pool state", error);
       } finally {
@@ -332,7 +351,7 @@ export default function Home() {
       }
     }
 
-    loadPoolState();
+    void loadPoolState();
 
     const interval = window.setInterval(loadPoolState, 20000);
 
@@ -391,7 +410,7 @@ export default function Home() {
       }
     }
 
-    loadChatMessages();
+    void loadChatMessages();
 
     const interval = window.setInterval(loadChatMessages, 10000);
 
@@ -441,7 +460,7 @@ export default function Home() {
       }
     }
 
-    loadFinalGames();
+    void loadFinalGames();
 
     const interval = window.setInterval(loadFinalGames, 60 * 1000);
 
@@ -872,6 +891,7 @@ export default function Home() {
           bracket={selectedBracketCard}
           rank={selectedBracketRank}
           onClose={() => setSelectedBracket(null)}
+          officialResults={officialResults}
         />
 
         <style jsx global>{`

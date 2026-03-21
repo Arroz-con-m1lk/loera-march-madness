@@ -9,6 +9,7 @@ type BracketEntry = {
   locked: boolean;
   score: number;
   championAlive: boolean;
+  busted?: boolean;
   championPick?: string;
   notes?: string;
   readablePicks?: {
@@ -73,6 +74,7 @@ function getPlayerBrackets(player: Player): BracketEntry[] {
       locked: player.submitted,
       score: player.score,
       championAlive: player.championAlive,
+      busted: false,
     },
   ];
 }
@@ -90,7 +92,7 @@ function getBestScore(player: Player) {
 }
 
 function getLiveBracketCount(player: Player) {
-  return getPlayerBrackets(player).filter((b) => b.championAlive).length;
+  return getPlayerBrackets(player).filter((b) => !b.busted).length;
 }
 
 function getBracketStatus(bracket?: BracketEntry) {
@@ -321,7 +323,7 @@ function BracketPreviewStrip({
       {Array.from({ length: 4 }).map((_, index) => {
         const bracket = brackets[index];
         const status = getBracketStatus(bracket);
-        const eliminated = bracket ? !bracket.championAlive : false;
+        const busted = bracket ? !!bracket.busted : false;
         const canView = isViewableBracket(bracket);
 
         return (
@@ -356,7 +358,7 @@ function BracketPreviewStrip({
                 <div className="text-right">
                   <div className="font-black">{bracket.score} pts</div>
                   <div className="mt-0.5 text-[11px] uppercase tracking-[0.18em]">
-                    {eliminated ? "Busted" : "Alive"}
+                    {busted ? "Busted" : "Alive"}
                   </div>
                 </div>
               )}
@@ -407,7 +409,7 @@ function PlayerCard({
 
   const safeStatus = normalizeStatus(player.status);
   const isOut = safeStatus === "out";
-  const isBusted = safeStatus === "confirmed" && liveBracketCount === 0;
+  const isBusted = liveBracketCount === 0 && safeStatus === "confirmed";
   const isOwnCard =
     currentViewerName?.trim().toLowerCase() ===
     player.name.trim().toLowerCase();
@@ -445,7 +447,7 @@ function PlayerCard({
           <div className="absolute inset-0 bg-black/35" />
           <div className="absolute left-1/2 top-1/2 w-[95%] -translate-x-1/2 -translate-y-1/2 -rotate-[24deg] border-y-4 border-neutral-300/25 bg-black/70 py-4 text-center shadow-[0_0_40px_rgba(0,0,0,0.65)]">
             <span className="block text-3xl font-black uppercase tracking-[0.28em] text-neutral-100 md:text-4xl">
-              Eliminated
+              Busted
             </span>
           </div>
         </div>

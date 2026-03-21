@@ -51,19 +51,25 @@ type EspnScoreboardResponse = {
   events?: EspnEvent[];
 };
 
-function formatDateLabel(dateString: string) {
+const PACIFIC_TZ = "America/Los_Angeles";
+
+function formatDateLabelPacific(dateString: string) {
   const date = new Date(dateString);
+
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
+    timeZone: PACIFIC_TZ,
   }).format(date);
 }
 
-function formatTimeLabel(dateString: string) {
+function formatTimeLabelPacific(dateString: string) {
   const date = new Date(dateString);
+
   return new Intl.DateTimeFormat("en-US", {
     hour: "numeric",
     minute: "2-digit",
+    timeZone: PACIFIC_TZ,
   }).format(date);
 }
 
@@ -79,9 +85,8 @@ function buildDateRange() {
   const start = new Date(now);
   const end = new Date(now);
 
-  // Wider range so completed tournament games stay available for scoring
-  start.setDate(start.getDate() - 30);
-  end.setDate(end.getDate() + 7);
+  start.setDate(start.getDate() - 1);
+  end.setDate(end.getDate() + 5);
 
   return `${yyyymmdd(start)}-${yyyymmdd(end)}`;
 }
@@ -91,46 +96,6 @@ function getTeamLink(
   fallback: string
 ): string {
   return competitor?.team?.links?.[0]?.href ?? fallback;
-}
-
-function cleanTeamName(value?: string) {
-  return (value ?? "").trim();
-}
-
-function canonicalTeamName(competitor?: EspnCompetitor) {
-  return (
-    cleanTeamName(competitor?.team?.displayName) ||
-    cleanTeamName(competitor?.team?.shortDisplayName) ||
-    cleanTeamName(competitor?.team?.abbreviation) ||
-    ""
-  );
-}
-
-function inferRoundLabel(event: EspnEvent, statusDescription: string, shortDetail: string) {
-  const haystack = `${event.name ?? ""} ${event.shortName ?? ""} ${statusDescription} ${shortDetail}`.toLowerCase();
-
-  if (haystack.includes("first four")) return "First Four";
-  if (haystack.includes("round of 64")) return "Round of 64";
-  if (haystack.includes("first round")) return "Round of 64";
-  if (haystack.includes("1st round")) return "Round of 64";
-
-  if (haystack.includes("round of 32")) return "Round of 32";
-  if (haystack.includes("second round")) return "Round of 32";
-  if (haystack.includes("2nd round")) return "Round of 32";
-
-  if (haystack.includes("sweet 16")) return "Sweet 16";
-  if (haystack.includes("elite 8")) return "Elite 8";
-  if (haystack.includes("elite eight")) return "Elite 8";
-
-  if (haystack.includes("final four")) return "Final 4";
-  if (haystack.includes("national semifinal")) return "Final 4";
-  if (haystack.includes("semifinal")) return "Final 4";
-
-  if (haystack.includes("championship")) return "Championship";
-  if (haystack.includes("title game")) return "Championship";
-  if (haystack.includes("national title")) return "Championship";
-
-  return null;
 }
 
 function normalizeEvent(event: EspnEvent) {
@@ -154,47 +119,24 @@ function normalizeEvent(event: EspnEvent) {
       completed: false,
     };
 
-  const awayDisplay =
-    away.team?.shortDisplayName ||
-    away.team?.displayName ||
-    away.team?.abbreviation ||
-    "Away";
-
-  const homeDisplay =
-    home.team?.shortDisplayName ||
-    home.team?.displayName ||
-    home.team?.abbreviation ||
-    "Home";
-
-  const awayCanonical = canonicalTeamName(away);
-  const homeCanonical = canonicalTeamName(home);
-
-  const winnerCanonical = away.winner
-    ? awayCanonical
-    : home.winner
-      ? homeCanonical
-      : null;
-
-  const loserCanonical = away.winner
-    ? homeCanonical
-    : home.winner
-      ? awayCanonical
-      : null;
-
-  const statusDescription = status.description || "Scheduled";
-  const shortDetail = status.shortDetail || formatTimeLabel(event.date);
-  const roundLabel = inferRoundLabel(event, statusDescription, shortDetail);
-
   return {
     id: event.id,
-    name: event.name || event.shortName || `${awayDisplay} vs ${homeDisplay}`,
-    shortName: event.shortName || `${awayDisplay} vs ${homeDisplay}`,
+    name:
+      event.name ||
+      event.shortName ||
+      `${away.team?.displayName ?? "Away"} vs ${home.team?.displayName ?? "Home"}`,
 
-    awayTeam: awayDisplay,
-    homeTeam: homeDisplay,
+    awayTeam:
+      away.team?.shortDisplayName ||
+      away.team?.displayName ||
+      away.team?.abbreviation ||
+      "Away",
 
-    awayCanonicalTeam: awayCanonical || awayDisplay,
-    homeCanonicalTeam: homeCanonical || homeDisplay,
+    homeTeam:
+      home.team?.shortDisplayName ||
+      home.team?.displayName ||
+      home.team?.abbreviation ||
+      "Home",
 
     awaySeed: away.seed ?? undefined,
     homeSeed: home.seed ?? undefined,
@@ -219,21 +161,28 @@ function normalizeEvent(event: EspnEvent) {
       "https://www.espn.com/mens-college-basketball/"
     ),
 
-    dateLabel: formatDateLabel(event.date),
-    timeLabel: shortDetail,
-    epoch: new Date(event.date).getTime(),
+    dateLabel: formatDateLabelPacific(event.date),
+    timeLabel: status.shortDetail || formatTimeLabelPacific(event.date),
+    pacificTimeLabel: formatTimeLabelPacific(event.date),
 
+    epoch: new Date(event.date).getTime(),
     gameState: status.name || "STATUS_UNKNOWN",
-    statusDescription,
+    statusDescription: status.description || "Scheduled",
     completed: Boolean(status.completed),
 
-    roundLabel,
+    winner:
+      away.winner
+        ? away.team?.displayName || away.team?.shortDisplayName || null
+        : home.winner
+          ? home.team?.displayName || home.team?.shortDisplayName || null
+          : null,
 
-    winner: away.winner ? away.team?.displayName : home.winner ? home.team?.displayName : null,
-    loser: away.winner ? home.team?.displayName : home.winner ? away.team?.displayName : null,
-
-    winnerCanonical: winnerCanonical || null,
-    loserCanonical: loserCanonical || null,
+    loser:
+      away.winner
+        ? home.team?.displayName || home.team?.shortDisplayName || null
+        : home.winner
+          ? away.team?.displayName || away.team?.shortDisplayName || null
+          : null,
 
     awayScore: away.score ? Number(away.score) : null,
     homeScore: home.score ? Number(home.score) : null,
@@ -246,10 +195,10 @@ export async function GET() {
 
     const url =
       `https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard` +
-      `?dates=${dates}&groups=50&limit=500`;
+      `?dates=${dates}&groups=50&limit=200`;
 
     const response = await fetch(url, {
-      next: { revalidate: 60 },
+      cache: "no-store",
       headers: {
         "User-Agent": "Mozilla/5.0",
         Accept: "application/json",
@@ -262,8 +211,8 @@ export async function GET() {
           games: [],
           liveGames: [],
           finals: [],
-          completedByRound: {},
           updatedAt: new Date().toISOString(),
+          timezone: PACIFIC_TZ,
           error: `ESPN request failed with status ${response.status}`,
         },
         { status: 200 }
@@ -279,38 +228,28 @@ export async function GET() {
       ReturnType<typeof normalizeEvent>
     >[];
 
+    const liveStateNames = new Set([
+      "STATUS_IN_PROGRESS",
+      "STATUS_HALFTIME",
+      "STATUS_END_PERIOD",
+    ]);
+
     const liveGames = normalized.filter((game) =>
-      ["STATUS_IN_PROGRESS", "STATUS_HALFTIME", "STATUS_END_PERIOD"].includes(
-        game.gameState
-      )
+      liveStateNames.has(game.gameState)
     );
 
     const finals = normalized.filter((game) => game.completed);
 
     const upcomingGames = normalized.filter(
-      (game) =>
-        !game.completed &&
-        !["STATUS_IN_PROGRESS", "STATUS_HALFTIME", "STATUS_END_PERIOD"].includes(
-          game.gameState
-        )
-    );
-
-    const completedByRound = finals.reduce<Record<string, typeof finals>>(
-      (acc, game) => {
-        const key = game.roundLabel ?? "Unclassified";
-        if (!acc[key]) acc[key] = [];
-        acc[key].push(game);
-        return acc;
-      },
-      {}
+      (game) => !game.completed && !liveStateNames.has(game.gameState)
     );
 
     return NextResponse.json({
       games: upcomingGames,
       liveGames,
       finals,
-      completedByRound,
       updatedAt: new Date().toISOString(),
+      timezone: PACIFIC_TZ,
       error: "",
     });
   } catch (error) {
@@ -319,12 +258,12 @@ export async function GET() {
         games: [],
         liveGames: [],
         finals: [],
-        completedByRound: {},
         updatedAt: new Date().toISOString(),
+        timezone: PACIFIC_TZ,
         error:
           error instanceof Error
             ? error.message
-            : "Could not load ESPN scoreboard data.",
+            : "Could not load scoreboard data.",
       },
       { status: 200 }
     );

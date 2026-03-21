@@ -1,5 +1,10 @@
 "use client";
 
+type PickRound = {
+  round: string;
+  teams: string[];
+};
+
 type BracketViewerCard = {
   id: string;
   playerName: string;
@@ -10,19 +15,27 @@ type BracketViewerCard = {
   paid: boolean;
   submitted: boolean;
   locked: boolean;
+  busted?: boolean;
   championPick?: string;
   notes?: string;
-  readablePicks?: {
-    round: string;
-    teams: string[];
-  }[];
+  readablePicks?: PickRound[];
 };
 
 type BracketViewerModalProps = {
   bracket: BracketViewerCard | null;
   rank?: number | null;
   onClose: () => void;
+  officialResults?: PickRound[];
 };
+
+const ROUND_ORDER = [
+  "Round of 64",
+  "Round of 32",
+  "Sweet 16",
+  "Elite 8",
+  "Final 4",
+  "Championship",
+] as const;
 
 function hasReadablePicks(
   bracket: Pick<BracketViewerCard, "readablePicks">
@@ -45,10 +58,83 @@ function getReadablePickCount(
   );
 }
 
+function normalizeName(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function didTeamLoseEarlier(
+  team: string,
+  roundName: string,
+  officialResults?: PickRound[]
+) {
+  if (!officialResults) return false;
+
+  const roundIndex = ROUND_ORDER.indexOf(
+    roundName as (typeof ROUND_ORDER)[number]
+  );
+  if (roundIndex <= 0) return false;
+
+  const normalizedTeam = normalizeName(team);
+
+  for (let i = 0; i < roundIndex; i += 1) {
+    const earlierRoundName = ROUND_ORDER[i];
+    const earlierRound = officialResults.find((r) => r.round === earlierRoundName);
+
+    if (!earlierRound) continue;
+
+    for (const winner of earlierRound.teams ?? []) {
+      if (!winner?.trim()) continue;
+
+      if (normalizeName(winner) === normalizedTeam) {
+        return false;
+      }
+    }
+
+    const existsInEarlierWinners = earlierRound.teams.some(
+      (winner) => normalizeName(winner || "") === normalizedTeam
+    );
+
+    if (!existsInEarlierWinners) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function getPickResultColor(
+  team: string,
+  roundName: string,
+  index: number,
+  officialResults?: PickRound[]
+) {
+  if (!officialResults) {
+    return "bg-white/10 text-white";
+  }
+
+  const round = officialResults.find((r) => r.round === roundName);
+  const winner = round?.teams?.[index]?.trim();
+
+  if (winner) {
+    if (normalizeName(winner) === normalizeName(team)) {
+      return "border border-emerald-400/30 bg-emerald-500/20 text-emerald-300";
+    }
+
+    return "border border-red-400/30 bg-red-500/20 text-red-300";
+  }
+
+  if (didTeamLoseEarlier(team, roundName, officialResults)) {
+    return "border border-zinc-700 bg-zinc-800/70 text-zinc-400";
+  }
+
+  return "bg-white/10 text-white";
+}
+
 export default function BracketViewerModal({
   bracket,
   rank,
   onClose,
+  officialResults,
 }: BracketViewerModalProps) {
   if (!bracket) return null;
 
@@ -169,24 +255,23 @@ export default function BracketViewerModal({
 
                 <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
                   <div className="text-xs uppercase tracking-[0.22em] text-neutral-500">
-                    Champion Status
-                  </div>
-                  <div className="mt-2 text-xl font-black uppercase text-white">
-                    {bracket.championAlive ? "Champion Alive" : "Eliminated"}
+                    Bracket Status
                   </div>
 
-                  {bracket.championPick ? (
-                    <div className="mt-3 text-sm text-neutral-300">
-                      Picked champion:{" "}
-                      <span className="font-bold text-white">
-                        {bracket.championPick}
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="mt-3 text-sm text-neutral-400">
-                      No champion pick entered yet.
-                    </div>
-                  )}
+                  <div className="mt-2 text-xl font-black uppercase text-white">
+                    {bracket.busted ? "Busted" : "Still Live"}
+                  </div>
+
+                  <div className="mt-3 text-sm text-neutral-300">
+                    Champion:{" "}
+                    <span className="font-bold text-white">
+                      {bracket.championPick || "None"}
+                    </span>
+                    {" • "}
+                    {bracket.championAlive
+                      ? "Champion still alive"
+                      : "Champion eliminated"}
+                  </div>
                 </div>
 
                 <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
@@ -227,12 +312,12 @@ export default function BracketViewerModal({
 
                     <span
                       className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                        bracket.championAlive
-                          ? "bg-yellow-500/20 text-yellow-300"
-                          : "bg-zinc-700 text-zinc-300"
+                        bracket.busted
+                          ? "bg-zinc-700 text-zinc-300"
+                          : "bg-yellow-500/20 text-yellow-300"
                       }`}
                     >
-                      {bracket.championAlive ? "Alive" : "Busted"}
+                      {bracket.busted ? "Busted" : "Still Live"}
                     </span>
 
                     {hasReadablePicks(bracket) ? (
@@ -269,7 +354,12 @@ export default function BracketViewerModal({
                                 .map((team, index) => (
                                   <span
                                     key={`${round.round}-${team}-${index}`}
-                                    className="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-white"
+                                    className={`rounded-full px-3 py-1 text-xs font-semibold ${getPickResultColor(
+                                      team,
+                                      round.round,
+                                      index,
+                                      officialResults
+                                    )}`}
                                   >
                                     {team}
                                   </span>

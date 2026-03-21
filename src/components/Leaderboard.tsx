@@ -28,7 +28,7 @@ function getBestLockedScore(player: Player) {
 
 function getLiveBracketCount(player: Player) {
   return player.brackets.filter(
-    (bracket) => bracket.paid && bracket.locked && bracket.championAlive
+    (bracket) => bracket.paid && bracket.locked && !bracket.busted
   ).length;
 }
 
@@ -109,10 +109,10 @@ export default function Leaderboard({ players }: LeaderboardProps) {
                       {lockedEntries.length === 0
                         ? "No locked entries yet"
                         : busted
-                        ? "All locked brackets busted"
-                        : `${liveEntries} live ${
-                            liveEntries === 1 ? "entry" : "entries"
-                          } still rolling`}
+                          ? "All locked brackets busted"
+                          : `${liveEntries} live ${
+                              liveEntries === 1 ? "entry" : "entries"
+                            } still rolling`}
                     </div>
                   </div>
                 </div>
@@ -159,7 +159,7 @@ export default function Leaderboard({ players }: LeaderboardProps) {
                       : "bg-zinc-700 text-zinc-300"
                   }`}
                 >
-                  {liveEntries > 0 ? `${liveEntries} alive` : "Eliminated"}
+                  {liveEntries > 0 ? `${liveEntries} alive` : "Busted"}
                 </span>
 
                 {isTopThree && (

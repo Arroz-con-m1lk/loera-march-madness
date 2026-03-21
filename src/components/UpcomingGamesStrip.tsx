@@ -60,7 +60,19 @@ function TeamLink({
   );
 }
 
+function formatPacificTime(epoch: number) {
+  const date = new Date(epoch);
+
+  return new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "America/Los_Angeles",
+  }).format(date);
+}
+
 function GameChip({ game }: { game: GameCard }) {
+  const pacificTime = formatPacificTime(game.epoch);
+
   return (
     <div className="flex items-center gap-3 whitespace-nowrap rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-2.5 shadow-[0_8px_24px_rgba(0,0,0,0.18)]">
       <div className="flex items-center gap-2">
@@ -88,10 +100,14 @@ function GameChip({ game }: { game: GameCard }) {
       <span className="text-white/20">•</span>
 
       <div className="rounded-full bg-red-500/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-red-100">
-        {game.timeLabel}
+        {pacificTime} PT
       </div>
     </div>
   );
+}
+
+function formatLiveState(gameState: string) {
+  return gameState.replace(/^STATUS_/, "").split("_").join(" ");
 }
 
 export default function UpcomingGamesStrip() {
@@ -128,10 +144,9 @@ export default function UpcomingGamesStrip() {
         if (!contentType.includes("application/json")) {
           const text = await response.text();
           throw new Error(
-            `Expected JSON but received: ${contentType || "unknown"} ${text.slice(
-              0,
-              120
-            )}`
+            `Expected JSON but received: ${
+              contentType || "unknown"
+            } ${text.slice(0, 120)}`
           );
         }
 
@@ -160,7 +175,7 @@ export default function UpcomingGamesStrip() {
       }
     }
 
-    loadGames();
+    void loadGames();
 
     const interval = window.setInterval(loadGames, 5 * 60 * 1000);
 
@@ -211,7 +226,7 @@ export default function UpcomingGamesStrip() {
                     name={game.homeTeam}
                   />
                   <span className="rounded-full bg-black/20 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.18em] text-red-100">
-                    {game.gameState.split("_").join(" ")}
+                    {formatLiveState(game.gameState)}
                   </span>
                   {index < liveGames.length - 1 && (
                     <span className="ml-1 text-white/35">•</span>

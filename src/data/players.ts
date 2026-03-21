@@ -14,6 +14,7 @@ export type BracketEntry = {
   locked: boolean;
   score: number;
   championAlive: boolean;
+  busted?: boolean;
   championPick?: string;
   notes?: string;
   readablePicks?: BracketPickRound[];
