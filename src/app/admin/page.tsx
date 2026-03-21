@@ -282,17 +282,24 @@ export default function AdminPage() {
             </h1>
             <p className="mt-2 text-sm text-neutral-400">
               Update player status, payment state, bracket locks, champion picks,
-              image links, and bracket health.
+              image links, bracket health, and official results scoring.
             </p>
           </div>
 
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search player, bracket, or champion..."
               className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none placeholder:text-neutral-500 md:w-80"
             />
+
+            <button
+              onClick={() => router.push("/admin/results")}
+              className="rounded-xl bg-cyan-500 px-4 py-3 text-sm font-black text-black hover:brightness-105"
+            >
+              Official Results
+            </button>
 
             <button
               onClick={() => void loadAll()}
