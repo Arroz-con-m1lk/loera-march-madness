@@ -5,6 +5,7 @@ import {
   createEmptyRounds,
   normalizeReadablePicks,
 } from "./bracketRounds";
+import { teamsMatch } from "./normalizeTeamName";
 
 export type RoundKey = (typeof ROUND_ORDER)[number];
 
@@ -109,10 +110,6 @@ export function mergeReadablePicks(
   });
 }
 
-function normalizeTeamName(value: string | undefined | null): string {
-  return (value ?? "").trim().toLowerCase();
-}
-
 export function countCorrectPicksForRound(
   picks: PickRound[],
   results: PickRound[],
@@ -128,11 +125,11 @@ export function countCorrectPicksForRound(
   let correct = 0;
 
   for (let index = 0; index < slotCount; index++) {
-    const picked = normalizeTeamName(pickedTeams[index]);
-    const winner = normalizeTeamName(winningTeams[index]);
+    const picked = pickedTeams[index]?.trim() ?? "";
+    const winner = winningTeams[index]?.trim() ?? "";
 
     if (!picked || !winner) continue;
-    if (picked === winner) correct += 1;
+    if (teamsMatch(picked, winner)) correct += 1;
   }
 
   return correct;
