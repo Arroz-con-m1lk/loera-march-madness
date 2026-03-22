@@ -11,7 +11,9 @@ const TEAM_ALIASES: Record<string, string> = {
   "north dakota st": "north dakota state",
 
   "uconn": "connecticut",
-  "u conn": "connecticut",
+  "u con": "connecticut",
+  "ucon": "connecticut",
+  "connecticut": "connecticut",
 
   "saint marys": "saint mary's",
   "saint marys ca": "saint mary's",
@@ -20,8 +22,9 @@ const TEAM_ALIASES: Record<string, string> = {
   "st marys college": "saint mary's",
 
   "st johns": "saint john's",
-  "st johns ny": "saint john's",
+  "st john's": "saint john's",
   "saint johns": "saint john's",
+  "saint john's": "saint john's",
 
   "saint louis": "saint louis",
   "st louis": "saint louis",
@@ -47,13 +50,16 @@ const TEAM_ALIASES: Record<string, string> = {
   "prairie view a and m": "prairie view am",
   "prairie view": "prairie view am",
 
-  "miami fl": "miami",
-  "miami florida": "miami",
-  "miami hurricanes": "miami",
+  "miami fl": "miami florida",
+  "miami florida": "miami florida",
+  "miami (fl)": "miami florida",
+  "miami hurricanes": "miami florida",
+  "miami": "miami florida",
 
   "miami oh": "miami ohio",
   "miami ohio": "miami ohio",
   "miamioh": "miami ohio",
+  "miami (oh)": "miami ohio",
 
   "cal baptist": "california baptist",
 
