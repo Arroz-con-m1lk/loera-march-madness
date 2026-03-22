@@ -1,5 +1,7 @@
 "use client";
 
+import { teamsMatch } from "@/lib/normalizeTeamName";
+
 type PickRound = {
   round: string;
   teams: string[];
@@ -58,10 +60,6 @@ function getReadablePickCount(
   );
 }
 
-function normalizeName(value: string) {
-  return value.trim().toLowerCase();
-}
-
 function didTeamLoseEarlier(
   team: string,
   roundName: string,
@@ -74,24 +72,20 @@ function didTeamLoseEarlier(
   );
   if (roundIndex <= 0) return false;
 
-  const normalizedTeam = normalizeName(team);
-
   for (let i = 0; i < roundIndex; i += 1) {
     const earlierRoundName = ROUND_ORDER[i];
     const earlierRound = officialResults.find((r) => r.round === earlierRoundName);
 
     if (!earlierRound) continue;
 
-    for (const winner of earlierRound.teams ?? []) {
-      if (!winner?.trim()) continue;
+    const anyWinnerEntered = earlierRound.teams.some((winner) => winner?.trim());
 
-      if (normalizeName(winner) === normalizedTeam) {
-        return false;
-      }
+    if (!anyWinnerEntered) {
+      continue;
     }
 
-    const existsInEarlierWinners = earlierRound.teams.some(
-      (winner) => normalizeName(winner || "") === normalizedTeam
+    const existsInEarlierWinners = earlierRound.teams.some((winner) =>
+      teamsMatch(winner, team)
     );
 
     if (!existsInEarlierWinners) {
@@ -116,7 +110,7 @@ function getPickResultColor(
   const winner = round?.teams?.[index]?.trim();
 
   if (winner) {
-    if (normalizeName(winner) === normalizeName(team)) {
+    if (teamsMatch(winner, team)) {
       return "border border-emerald-400/30 bg-emerald-500/20 text-emerald-300";
     }
 
