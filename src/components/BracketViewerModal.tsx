@@ -96,6 +96,40 @@ function didTeamLoseEarlier(
   return false;
 }
 
+function hasAnyLivePicks(
+  readablePicks: PickRound[] | undefined,
+  officialResults?: PickRound[]
+) {
+  if (!readablePicks || readablePicks.length === 0) {
+    return true;
+  }
+
+  if (!officialResults) {
+    return true;
+  }
+
+  for (const round of readablePicks) {
+    const resultRound = officialResults.find((r) => r.round === round.round);
+
+    for (let index = 0; index < (round.teams?.length ?? 0); index += 1) {
+      const team = round.teams[index]?.trim();
+      if (!team) continue;
+
+      const winner = resultRound?.teams?.[index]?.trim();
+
+      if (winner) {
+        continue;
+      }
+
+      if (!didTeamLoseEarlier(team, round.round, officialResults)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
 function getPickResultColor(
   team: string,
   roundName: string,
@@ -133,6 +167,15 @@ export default function BracketViewerModal({
   if (!bracket) return null;
 
   const bracketImage = bracket.image ?? "/brackets/bracket-placeholder.png";
+
+  const derivedStillLive = hasAnyLivePicks(
+    bracket.readablePicks,
+    officialResults
+  );
+
+  const derivedBusted = hasReadablePicks(bracket)
+    ? !derivedStillLive
+    : !!bracket.busted;
 
   return (
     <div
@@ -253,7 +296,7 @@ export default function BracketViewerModal({
                   </div>
 
                   <div className="mt-2 text-xl font-black uppercase text-white">
-                    {bracket.busted ? "Busted" : "Still Live"}
+                    {derivedBusted ? "Busted" : "Still Live"}
                   </div>
 
                   <div className="mt-3 text-sm text-neutral-300">
@@ -306,12 +349,12 @@ export default function BracketViewerModal({
 
                     <span
                       className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                        bracket.busted
+                        derivedBusted
                           ? "bg-zinc-700 text-zinc-300"
                           : "bg-yellow-500/20 text-yellow-300"
                       }`}
                     >
-                      {bracket.busted ? "Busted" : "Still Live"}
+                      {derivedBusted ? "Busted" : "Still Live"}
                     </span>
 
                     {hasReadablePicks(bracket) ? (
