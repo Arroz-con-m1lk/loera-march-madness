@@ -74,7 +74,9 @@ function didTeamLoseEarlier(
 
   for (let i = 0; i < roundIndex; i += 1) {
     const earlierRoundName = ROUND_ORDER[i];
-    const earlierRound = officialResults.find((r) => r.round === earlierRoundName);
+    const earlierRound = officialResults.find(
+      (r) => r.round === earlierRoundName
+    );
 
     if (!earlierRound) continue;
 
@@ -130,6 +132,31 @@ function hasAnyLivePicks(
   return false;
 }
 
+function getDerivedChampionAlive(
+  championPick: string | undefined,
+  officialResults?: PickRound[]
+) {
+  if (!championPick?.trim()) return true;
+  if (!officialResults) return true;
+
+  for (const round of officialResults) {
+    const winners = round.teams ?? [];
+    const anyWinnerEntered = winners.some((winner) => winner?.trim());
+
+    if (!anyWinnerEntered) continue;
+
+    const stillAlive = winners.some((winner) =>
+      teamsMatch(winner, championPick)
+    );
+
+    if (!stillAlive) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 function getPickResultColor(
   team: string,
   roundName: string,
@@ -168,6 +195,11 @@ export default function BracketViewerModal({
 
   const bracketImage = bracket.image ?? "/brackets/bracket-placeholder.png";
 
+  const derivedChampionAlive = getDerivedChampionAlive(
+    bracket.championPick,
+    officialResults
+  );
+
   const derivedStillLive = hasAnyLivePicks(
     bracket.readablePicks,
     officialResults
@@ -175,7 +207,7 @@ export default function BracketViewerModal({
 
   const derivedBusted = hasReadablePicks(bracket)
     ? !derivedStillLive
-    : !!bracket.busted;
+    : !!bracket.busted || !derivedChampionAlive;
 
   return (
     <div
@@ -305,7 +337,7 @@ export default function BracketViewerModal({
                       {bracket.championPick || "None"}
                     </span>
                     {" • "}
-                    {bracket.championAlive
+                    {derivedChampionAlive
                       ? "Champion still alive"
                       : "Champion eliminated"}
                   </div>
