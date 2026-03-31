@@ -1,4 +1,7 @@
 import type { Player } from "../data/players";
+import type { PickRound } from "../lib/bracketRounds";
+
+type BracketLifeState = "empty" | "alive" | "lameDuck" | "busted";
 
 type BracketEntry = {
   id: string;
@@ -91,12 +94,70 @@ function getBestScore(player: Player) {
   return Math.max(...brackets.map((b) => b.score));
 }
 
+function hasReadablePicks(bracket?: BracketEntry) {
+  return Boolean(
+    bracket?.readablePicks?.some((round) =>
+      round.teams.some((team) => team.trim().length > 0)
+    )
+  );
+}
+
+function isViewableBracket(bracket?: BracketEntry) {
+  if (!bracket) return false;
+
+  return (
+    bracket.submitted ||
+    bracket.locked ||
+    bracket.paid ||
+    hasReadablePicks(bracket) ||
+    Boolean(bracket.championPick?.trim()) ||
+    Boolean(bracket.notes?.trim())
+  );
+}
+
+function getBracketLifeState(bracket?: BracketEntry): BracketLifeState {
+  if (!bracket) return "empty";
+  if (!isViewableBracket(bracket)) return "empty";
+  if (bracket.busted) return "busted";
+  if (bracket.championAlive === false) return "lameDuck";
+  return "alive";
+}
+
+function getLifeStateLabel(lifeState: BracketLifeState) {
+  if (lifeState === "busted") return "Busted";
+  if (lifeState === "lameDuck") return "Lame Duck";
+  if (lifeState === "alive") return "Alive";
+  return "Open";
+}
+
+function getLifeStateTextClass(lifeState: BracketLifeState) {
+  if (lifeState === "busted") return "text-zinc-300";
+  if (lifeState === "lameDuck") return "text-yellow-300";
+  if (lifeState === "alive") return "text-emerald-300";
+  return "text-neutral-400";
+}
+
 function getLiveBracketCount(player: Player) {
-  return getPlayerBrackets(player).filter((b) => !b.busted).length;
+  return getPlayerBrackets(player).filter((b) => {
+    const state = getBracketLifeState(b);
+    return state === "alive" || state === "lameDuck";
+  }).length;
+}
+
+function getLameDuckBracketCount(player: Player) {
+  return getPlayerBrackets(player).filter(
+    (b) => getBracketLifeState(b) === "lameDuck"
+  ).length;
+}
+
+function getBustedBracketCount(player: Player) {
+  return getPlayerBrackets(player).filter(
+    (b) => getBracketLifeState(b) === "busted"
+  ).length;
 }
 
 function getBracketStatus(bracket?: BracketEntry) {
-  if (!bracket) {
+  if (!bracket || !isViewableBracket(bracket)) {
     return {
       label: "Open",
       detail: "Open slot",
@@ -199,27 +260,6 @@ function getEditableBracketsForPlayer(player: Player) {
   return unlocked;
 }
 
-function hasReadablePicks(bracket?: BracketEntry) {
-  return Boolean(
-    bracket?.readablePicks?.some((round) =>
-      round.teams.some((team) => team.trim().length > 0)
-    )
-  );
-}
-
-function isViewableBracket(bracket?: BracketEntry) {
-  if (!bracket) return false;
-
-  return (
-    bracket.submitted ||
-    bracket.locked ||
-    bracket.paid ||
-    hasReadablePicks(bracket) ||
-    Boolean(bracket.championPick?.trim()) ||
-    Boolean(bracket.notes?.trim())
-  );
-}
-
 function getStatusVisual(status?: Player["status"]) {
   const safeStatus = normalizeStatus(status);
 
@@ -277,6 +317,7 @@ function getSubmissionVisual(player: Player) {
 type PlayerGridProps = {
   players: Player[];
   bracketRankMap: Record<string, number>;
+  results?: PickRound[];
   onSelectBracket: (name: string) => void;
   onToggleOutStatus: (name: string) => void;
   onToggleBusted: (name: string) => void;
@@ -323,7 +364,7 @@ function BracketPreviewStrip({
       {Array.from({ length: 4 }).map((_, index) => {
         const bracket = brackets[index];
         const status = getBracketStatus(bracket);
-        const busted = bracket ? !!bracket.busted : false;
+        const lifeState = bracket ? getBracketLifeState(bracket) : "empty";
         const canView = isViewableBracket(bracket);
 
         return (
@@ -336,7 +377,9 @@ function BracketPreviewStrip({
             disabled={!canView}
             className={`flex items-center justify-between rounded-xl border px-3 py-2 text-left text-xs transition ${
               status.rowClass
-            } ${canView ? "cursor-pointer hover:brightness-110" : "cursor-default"}`}
+            } ${
+              canView ? "cursor-pointer hover:brightness-110" : "cursor-default"
+            }`}
           >
             <div className="min-w-0">
               <div className="flex items-center gap-2">
@@ -354,11 +397,15 @@ function BracketPreviewStrip({
             </div>
 
             <div className="flex items-center gap-2">
-              {bracket && (
+              {bracket && canView && (
                 <div className="text-right">
                   <div className="font-black">{bracket.score} pts</div>
-                  <div className="mt-0.5 text-[11px] uppercase tracking-[0.18em]">
-                    {busted ? "Busted" : "Alive"}
+                  <div
+                    className={`mt-0.5 text-[11px] uppercase tracking-[0.18em] ${getLifeStateTextClass(
+                      lifeState
+                    )}`}
+                  >
+                    {getLifeStateLabel(lifeState)}
                   </div>
                 </div>
               )}
@@ -400,6 +447,8 @@ function PlayerCard({
   const paidBracketCount = brackets.filter((b) => b.paid).length;
   const bestScore = getBestScore(player);
   const liveBracketCount = getLiveBracketCount(player);
+  const lameDuckBracketCount = getLameDuckBracketCount(player);
+  const bustedBracketCount = getBustedBracketCount(player);
   const bestBracketId = getBestBracketIdForPlayer(player, bracketRankMap);
   const editableBrackets = getEditableBracketsForPlayer(player);
 
@@ -410,6 +459,10 @@ function PlayerCard({
   const safeStatus = normalizeStatus(player.status);
   const isOut = safeStatus === "out";
   const isBusted = liveBracketCount === 0 && safeStatus === "confirmed";
+  const isLameDuck =
+    liveBracketCount > 0 &&
+    lameDuckBracketCount > 0 &&
+    safeStatus === "confirmed";
   const isOwnCard =
     currentViewerName?.trim().toLowerCase() ===
     player.name.trim().toLowerCase();
@@ -427,9 +480,11 @@ function PlayerCard({
           ? "border-neutral-700 bg-neutral-900/70 opacity-50 grayscale"
           : isBusted
             ? "border-neutral-700 bg-gradient-to-br from-zinc-900 via-black to-zinc-950 opacity-70 grayscale-[0.65] saturate-50"
-            : safeStatus === "maybe"
-              ? "border-amber-400/20 bg-gradient-to-br from-amber-500/10 via-neutral-950 to-neutral-900 hover:-translate-y-1 hover:shadow-2xl"
-              : "border-white/10 bg-gradient-to-br from-neutral-900 via-neutral-950 to-black hover:-translate-y-1 hover:shadow-2xl"
+            : isLameDuck
+              ? "border-yellow-400/30 bg-gradient-to-br from-yellow-500/10 via-neutral-950 to-neutral-900 hover:-translate-y-1 hover:shadow-2xl"
+              : safeStatus === "maybe"
+                ? "border-amber-400/20 bg-gradient-to-br from-amber-500/10 via-neutral-950 to-neutral-900 hover:-translate-y-1 hover:shadow-2xl"
+                : "border-white/10 bg-gradient-to-br from-neutral-900 via-neutral-950 to-black hover:-translate-y-1 hover:shadow-2xl"
       }`}
     >
       <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-red-600 via-orange-400 to-red-600" />
@@ -479,7 +534,11 @@ function PlayerCard({
                   ? "Not joining"
                   : safeStatus === "maybe"
                     ? "Game-time decision"
-                    : "Confirmed entry holder"}
+                    : isBusted
+                      ? "No future scoring paths remain"
+                      : isLameDuck
+                        ? "Still scoring, title hopes fading"
+                        : "Confirmed entry holder"}
             </div>
           </div>
         </div>
@@ -534,6 +593,16 @@ function PlayerCard({
               <div className="mt-3 text-3xl font-black leading-none text-white">
                 {liveBracketCount}
               </div>
+              {lameDuckBracketCount > 0 && (
+                <div className="mt-2 text-xs font-bold uppercase tracking-[0.14em] text-yellow-300">
+                  {lameDuckBracketCount} lame duck
+                </div>
+              )}
+              {bustedBracketCount > 0 && !isBusted && (
+                <div className="mt-1 text-xs font-bold uppercase tracking-[0.14em] text-zinc-400">
+                  {bustedBracketCount} busted
+                </div>
+              )}
             </div>
 
             <div className="flex min-h-[132px] flex-col justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
@@ -575,6 +644,24 @@ function PlayerCard({
             <span className="rounded-full bg-red-500/15 px-3 py-1 text-red-200">
               Up to 4 brackets
             </span>
+
+            {isBusted && !isOut && (
+              <span className="rounded-full bg-zinc-700 px-3 py-1 text-zinc-300">
+                Busted
+              </span>
+            )}
+
+            {lameDuckBracketCount > 0 && !isBusted && (
+              <span className="rounded-full bg-yellow-500/20 px-3 py-1 text-yellow-300">
+                Lame Duck
+              </span>
+            )}
+
+            {!isBusted && lameDuckBracketCount === 0 && safeStatus === "confirmed" && (
+              <span className="rounded-full bg-emerald-500/20 px-3 py-1 text-emerald-300">
+                Alive
+              </span>
+            )}
 
             {player.grandmaMode && (
               <span className="rounded-full bg-yellow-500/20 px-3 py-1 text-yellow-200">
@@ -659,6 +746,7 @@ function PlayerCard({
 export default function PlayerGrid({
   players,
   bracketRankMap,
+  results,
   onSelectBracket,
   onToggleOutStatus,
   onToggleBusted,
@@ -667,6 +755,9 @@ export default function PlayerGrid({
   currentViewerName,
   isAdmin = false,
 }: PlayerGridProps) {
+  void results;
+  void onGenerateGrandmaBracket;
+
   const confirmedPlayers = players.filter(
     (p) => normalizeStatus(p.status) === "confirmed"
   );

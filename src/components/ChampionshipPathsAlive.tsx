@@ -7,6 +7,7 @@ type RankedBracketCard = {
   image?: string;
   score: number;
   championAlive: boolean;
+  busted?: boolean;
   paid: boolean;
   submitted: boolean;
   locked: boolean;
@@ -18,6 +19,7 @@ type PlayerLite = {
   status?: "confirmed" | "maybe" | "out";
   brackets: {
     championAlive: boolean;
+    busted?: boolean;
     paid: boolean;
     locked: boolean;
   }[];
@@ -41,8 +43,8 @@ function StatPill({
     accent === "yellow"
       ? "border-yellow-400/20 bg-yellow-500/10 text-yellow-100"
       : accent === "cyan"
-      ? "border-cyan-400/20 bg-cyan-500/10 text-cyan-100"
-      : "border-red-400/20 bg-red-500/10 text-red-100";
+        ? "border-cyan-400/20 bg-cyan-500/10 text-cyan-100"
+        : "border-red-400/20 bg-red-500/10 text-red-100";
 
   return (
     <div className={`rounded-2xl border px-4 py-3 ${accentClass}`}>
@@ -59,16 +61,24 @@ export default function ChampionshipPathsAlive({
   rankedBracketCards,
 }: ChampionshipPathsAliveProps) {
   const liveLockedBrackets = rankedBracketCards.filter(
-    (card) => card.locked && card.paid && card.championAlive
+    (card) => card.locked && card.paid && !card.busted
+  );
+
+  const lameDuckLockedBrackets = rankedBracketCards.filter(
+    (card) =>
+      card.locked &&
+      card.paid &&
+      !card.busted &&
+      card.championAlive === false
   );
 
   const livePlayers = players.filter(
-  (player) =>
-    player.status !== "out" &&
-    player.brackets.some(
-      (bracket) => bracket.championAlive && bracket.paid && bracket.locked
-    )
-);
+    (player) =>
+      player.status !== "out" &&
+      player.brackets.some(
+        (bracket) => bracket.paid && bracket.locked && !bracket.busted
+      )
+  );
 
   const projectedWinner =
     [...liveLockedBrackets].sort((a, b) => a.rank - b.rank)[0] ?? null;
@@ -107,14 +117,14 @@ export default function ChampionshipPathsAlive({
           accent="yellow"
         />
         <StatPill
+          label="Lame Duck"
+          value={String(lameDuckLockedBrackets.length)}
+          accent="yellow"
+        />
+        <StatPill
           label="Projected Winner"
           value={projectedWinner ? projectedWinner.playerName : "TBD"}
           accent="cyan"
-        />
-        <StatPill
-          label="Current Leader"
-          value={currentLeader ? currentLeader.playerName : "TBD"}
-          accent="red"
         />
       </div>
 
@@ -131,6 +141,9 @@ export default function ChampionshipPathsAlive({
               <div className="mt-1 text-sm text-white/65">
                 {projectedWinner.label} • #{projectedWinner.rank} overall •{" "}
                 {projectedWinner.score} pts
+                {projectedWinner.championAlive === false && !projectedWinner.busted
+                  ? " • Lame Duck"
+                  : " • Alive"}
               </div>
             </>
           ) : (
@@ -147,8 +160,10 @@ export default function ChampionshipPathsAlive({
           <div className="mt-2 text-sm leading-6 text-white/70">
             {projectedWinner && currentLeader
               ? projectedWinner.id === currentLeader.id
-                ? `${currentLeader.playerName} is leading and still holding the cleanest path to the crown.`
-                : `${projectedWinner.playerName} has the strongest live path, but ${currentLeader.playerName} still sits on top right now.`
+                ? projectedWinner.championAlive === false && !projectedWinner.busted
+                  ? `${currentLeader.playerName} is leading and still holds the cleanest remaining path, but it is now a lame duck route.`
+                  : `${currentLeader.playerName} is leading and still holding the cleanest path to the crown.`
+                : `${projectedWinner.playerName} has the strongest remaining live path, but ${currentLeader.playerName} still sits on top right now.`
               : "The pool will sharpen once more live results come in."}
           </div>
         </div>

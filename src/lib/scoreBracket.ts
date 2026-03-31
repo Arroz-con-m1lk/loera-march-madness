@@ -128,8 +128,11 @@ export function countCorrectPicksForRound(
     const picked = pickedTeams[index]?.trim() ?? "";
     const winner = winningTeams[index]?.trim() ?? "";
 
-    if (!picked || !winner) continue;
-    if (teamsMatch(picked, winner)) correct += 1;
+    if (!winner) continue;
+
+    if (picked && teamsMatch(picked, winner)) {
+      correct += 1;
+    }
   }
 
   return correct;
@@ -148,6 +151,7 @@ export function scoreBracket(
       normalizedResults,
       round
     );
+
     const possiblePicks = ROUND_SIZES[round];
     const pointsPerPick = ROUND_POINTS[round];
     const points = correctPicks * pointsPerPick;
@@ -174,4 +178,40 @@ export function getBracketScore(
   results: PickRound[]
 ): number {
   return scoreBracket(picks, results).totalScore;
+}
+
+export function isTeamStillAlive(
+  team: string,
+  results: PickRound[]
+): boolean {
+  if (!team) return false;
+  if (!results || results.length === 0) return true;
+
+  const resultsMap = readablePicksToRoundMap(results);
+
+  for (const round of ROUND_ORDER) {
+    const expectedSlots = ROUND_SIZES[round] ?? 0;
+
+    const winners = (resultsMap[round] ?? [])
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0);
+
+    if (winners.length === 0) {
+      return true;
+    }
+
+    const found = winners.some((winner) => teamsMatch(winner, team));
+
+    if (found) {
+      continue;
+    }
+
+    if (winners.length < expectedSlots) {
+      return true;
+    }
+
+    return false;
+  }
+
+  return true;
 }

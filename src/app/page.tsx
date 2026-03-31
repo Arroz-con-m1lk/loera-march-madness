@@ -249,10 +249,7 @@ export default function Home() {
   );
 
   const bracketRankMap = useMemo(
-    () =>
-      Object.fromEntries(
-        rankedBracketCards.map((card) => [card.id, card.rank])
-      ),
+    () => Object.fromEntries(rankedBracketCards.map((card) => [card.id, card.rank])),
     [rankedBracketCards]
   );
 
@@ -269,6 +266,7 @@ export default function Home() {
           paid: bracket.paid,
           submitted: bracket.submitted,
           locked: bracket.locked,
+          busted: bracket.busted,
           championPick: bracket.championPick,
           notes: bracket.notes,
           readablePicks: bracket.readablePicks,
@@ -294,12 +292,7 @@ export default function Home() {
         setPlayers((prev) => {
           const prevString = JSON.stringify(prev);
           const nextString = JSON.stringify(data.players);
-
-          if (prevString === nextString) {
-            return prev;
-          }
-
-          return data.players;
+          return prevString === nextString ? prev : data.players;
         });
       }
 
@@ -328,12 +321,7 @@ export default function Home() {
           setPlayers((prev) => {
             const prevString = JSON.stringify(prev);
             const nextString = JSON.stringify(data.players);
-
-            if (prevString === nextString) {
-              return prev;
-            }
-
-            return data.players;
+            return prevString === nextString ? prev : data.players;
           });
         }
 
@@ -387,12 +375,7 @@ export default function Home() {
           setChatMessages((prev) => {
             const prevString = JSON.stringify(prev);
             const nextString = JSON.stringify(mapped);
-
-            if (prevString === nextString) {
-              return prev;
-            }
-
-            return mapped;
+            return prevString === nextString ? prev : mapped;
           });
         }
       } catch (error) {
@@ -482,48 +465,31 @@ export default function Home() {
 
     const newAlerts: string[] = [];
 
-    setPlayers((current) =>
-      current.map((player) => {
-        const updatedBrackets = player.brackets.map((bracket) => {
-          if (!bracket.championAlive || !bracket.championPick) {
-            return bracket;
-          }
+    for (const player of players) {
+      for (const bracket of player.brackets) {
+        if (!bracket.championPick) continue;
 
-          const matchedLoser = losingTeams.find((loser) =>
-            teamsMatch(loser, bracket.championPick)
+        const matchedLoser = losingTeams.find((loser) =>
+          teamsMatch(loser, bracket.championPick)
+        );
+
+        if (!matchedLoser) continue;
+
+        const bustKey = `${bracket.id}-${matchedLoser}`;
+
+        if (!processedBustKeys.current.has(bustKey)) {
+          processedBustKeys.current.add(bustKey);
+          newAlerts.push(
+            `💀 ${player.name}'s ${bracket.label} is dead — ${matchedLoser} eliminated`
           );
-
-          if (!matchedLoser) return bracket;
-
-          const bustKey = `${bracket.id}-${matchedLoser}`;
-
-          if (!processedBustKeys.current.has(bustKey)) {
-            processedBustKeys.current.add(bustKey);
-            newAlerts.push(
-              `💀 ${player.name}'s ${bracket.label} is dead — ${matchedLoser} eliminated`
-            );
-          }
-
-          return {
-            ...bracket,
-            championAlive: false,
-          };
-        });
-
-        return {
-          ...player,
-          championAlive: updatedBrackets.some(
-            (bracket) => bracket.championAlive
-          ),
-          brackets: updatedBrackets,
-        };
-      })
-    );
+        }
+      }
+    }
 
     if (newAlerts.length > 0) {
       setDeathAlerts((current) => [...newAlerts, ...current].slice(0, 12));
     }
-  }, [finalGames]);
+  }, [finalGames, players]);
 
   useEffect(() => {
     if (!selectedBracket) return;
@@ -876,6 +842,7 @@ export default function Home() {
             <PlayerGrid
               players={players}
               bracketRankMap={bracketRankMap}
+              results={officialResults}
               onSelectBracket={setSelectedBracket}
               onToggleOutStatus={toggleOutStatus}
               onToggleBusted={toggleBusted}

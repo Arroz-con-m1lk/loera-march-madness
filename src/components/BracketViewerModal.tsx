@@ -1,11 +1,14 @@
 "use client";
 
+import { isTeamStillAlive } from "@/lib/scoreBracket";
 import { teamsMatch } from "@/lib/normalizeTeamName";
 
 type PickRound = {
   round: string;
   teams: string[];
 };
+
+type BracketViewerLifeState = "alive" | "lameDuck" | "busted";
 
 type BracketViewerCard = {
   id: string;
@@ -30,21 +33,12 @@ type BracketViewerModalProps = {
   officialResults?: PickRound[];
 };
 
-const ROUND_ORDER = [
-  "Round of 64",
-  "Round of 32",
-  "Sweet 16",
-  "Elite 8",
-  "Final 4",
-  "Championship",
-] as const;
-
 function hasReadablePicks(
   bracket: Pick<BracketViewerCard, "readablePicks">
 ) {
   return Boolean(
     bracket.readablePicks?.some((round) =>
-      round.teams.some((team) => Boolean(team))
+      round.teams.some((team) => Boolean(team?.trim()))
     )
   );
 }
@@ -54,107 +48,37 @@ function getReadablePickCount(
 ) {
   return (
     bracket.readablePicks?.reduce(
-      (sum, round) => sum + round.teams.filter(Boolean).length,
+      (sum, round) =>
+        sum + round.teams.filter((team) => Boolean(team?.trim())).length,
       0
     ) ?? 0
   );
 }
 
-function didTeamLoseEarlier(
-  team: string,
-  roundName: string,
-  officialResults?: PickRound[]
-) {
-  if (!officialResults) return false;
-
-  const roundIndex = ROUND_ORDER.indexOf(
-    roundName as (typeof ROUND_ORDER)[number]
-  );
-  if (roundIndex <= 0) return false;
-
-  for (let i = 0; i < roundIndex; i += 1) {
-    const earlierRoundName = ROUND_ORDER[i];
-    const earlierRound = officialResults.find(
-      (r) => r.round === earlierRoundName
-    );
-
-    if (!earlierRound) continue;
-
-    const anyWinnerEntered = earlierRound.teams.some((winner) => winner?.trim());
-
-    if (!anyWinnerEntered) {
-      continue;
-    }
-
-    const existsInEarlierWinners = earlierRound.teams.some((winner) =>
-      teamsMatch(winner, team)
-    );
-
-    if (!existsInEarlierWinners) {
-      return true;
-    }
-  }
-
-  return false;
+function getDerivedLifeState(
+  bracket: BracketViewerCard
+): BracketViewerLifeState {
+  if (bracket.busted) return "busted";
+  if (bracket.championAlive === false) return "lameDuck";
+  return "alive";
 }
 
-function hasAnyLivePicks(
-  readablePicks: PickRound[] | undefined,
-  officialResults?: PickRound[]
-) {
-  if (!readablePicks || readablePicks.length === 0) {
-    return true;
-  }
-
-  if (!officialResults) {
-    return true;
-  }
-
-  for (const round of readablePicks) {
-    const resultRound = officialResults.find((r) => r.round === round.round);
-
-    for (let index = 0; index < (round.teams?.length ?? 0); index += 1) {
-      const team = round.teams[index]?.trim();
-      if (!team) continue;
-
-      const winner = resultRound?.teams?.[index]?.trim();
-
-      if (winner) {
-        continue;
-      }
-
-      if (!didTeamLoseEarlier(team, round.round, officialResults)) {
-        return true;
-      }
-    }
-  }
-
-  return false;
+function getLifeStateLabel(lifeState: BracketViewerLifeState) {
+  if (lifeState === "busted") return "Busted";
+  if (lifeState === "lameDuck") return "Lame Duck";
+  return "Alive";
 }
 
-function getDerivedChampionAlive(
-  championPick: string | undefined,
-  officialResults?: PickRound[]
-) {
-  if (!championPick?.trim()) return true;
-  if (!officialResults) return true;
-
-  for (const round of officialResults) {
-    const winners = round.teams ?? [];
-    const anyWinnerEntered = winners.some((winner) => winner?.trim());
-
-    if (!anyWinnerEntered) continue;
-
-    const stillAlive = winners.some((winner) =>
-      teamsMatch(winner, championPick)
-    );
-
-    if (!stillAlive) {
-      return false;
-    }
+function getLifeStateBadgeClass(lifeState: BracketViewerLifeState) {
+  if (lifeState === "busted") {
+    return "bg-zinc-700 text-zinc-300";
   }
 
-  return true;
+  if (lifeState === "lameDuck") {
+    return "bg-yellow-500/20 text-yellow-300";
+  }
+
+  return "bg-emerald-500/20 text-emerald-300";
 }
 
 function getPickResultColor(
@@ -178,7 +102,7 @@ function getPickResultColor(
     return "border border-red-400/30 bg-red-500/20 text-red-300";
   }
 
-  if (didTeamLoseEarlier(team, roundName, officialResults)) {
+  if (!isTeamStillAlive(team, officialResults)) {
     return "border border-zinc-700 bg-zinc-800/70 text-zinc-400";
   }
 
@@ -194,20 +118,7 @@ export default function BracketViewerModal({
   if (!bracket) return null;
 
   const bracketImage = bracket.image ?? "/brackets/bracket-placeholder.png";
-
-  const derivedChampionAlive = getDerivedChampionAlive(
-    bracket.championPick,
-    officialResults
-  );
-
-  const derivedStillLive = hasAnyLivePicks(
-    bracket.readablePicks,
-    officialResults
-  );
-
-  const derivedBusted = hasReadablePicks(bracket)
-    ? !derivedStillLive
-    : !!bracket.busted || !derivedChampionAlive;
+  const lifeState = getDerivedLifeState(bracket);
 
   return (
     <div
@@ -328,7 +239,7 @@ export default function BracketViewerModal({
                   </div>
 
                   <div className="mt-2 text-xl font-black uppercase text-white">
-                    {derivedBusted ? "Busted" : "Still Live"}
+                    {getLifeStateLabel(lifeState)}
                   </div>
 
                   <div className="mt-3 text-sm text-neutral-300">
@@ -337,7 +248,7 @@ export default function BracketViewerModal({
                       {bracket.championPick || "None"}
                     </span>
                     {" • "}
-                    {derivedChampionAlive
+                    {bracket.championAlive
                       ? "Champion still alive"
                       : "Champion eliminated"}
                   </div>
@@ -380,13 +291,11 @@ export default function BracketViewerModal({
                     </span>
 
                     <span
-                      className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                        derivedBusted
-                          ? "bg-zinc-700 text-zinc-300"
-                          : "bg-yellow-500/20 text-yellow-300"
-                      }`}
+                      className={`rounded-full px-3 py-1 text-xs font-semibold ${getLifeStateBadgeClass(
+                        lifeState
+                      )}`}
                     >
-                      {derivedBusted ? "Busted" : "Still Live"}
+                      {getLifeStateLabel(lifeState)}
                     </span>
 
                     {hasReadablePicks(bracket) ? (
@@ -406,7 +315,7 @@ export default function BracketViewerModal({
                     <div className="mt-4 space-y-3">
                       {bracket.readablePicks
                         ?.filter((round) =>
-                          round.teams.some((team) => Boolean(team))
+                          round.teams.some((team) => Boolean(team?.trim()))
                         )
                         .map((round) => (
                           <div
@@ -419,7 +328,7 @@ export default function BracketViewerModal({
 
                             <div className="mt-3 flex flex-wrap gap-2">
                               {round.teams
-                                .filter(Boolean)
+                                .filter((team) => Boolean(team?.trim()))
                                 .map((team, index) => (
                                   <span
                                     key={`${round.round}-${team}-${index}`}

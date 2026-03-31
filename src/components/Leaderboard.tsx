@@ -16,8 +16,25 @@ type LeaderboardProps = {
   players: Player[];
 };
 
+type BracketLifeState = "alive" | "lameDuck" | "busted";
+
+type BracketEntry = {
+  id: string;
+  paid: boolean;
+  locked: boolean;
+  score: number;
+  championAlive: boolean;
+  busted?: boolean;
+};
+
+function getPlayerBrackets(player: Player): BracketEntry[] {
+  return Array.isArray(player.brackets) ? player.brackets : [];
+}
+
 function getLockedPaidBrackets(player: Player) {
-  return player.brackets.filter((bracket) => bracket.paid && bracket.locked);
+  return getPlayerBrackets(player).filter(
+    (bracket) => bracket.paid && bracket.locked
+  );
 }
 
 function getBestLockedScore(player: Player) {
@@ -26,9 +43,21 @@ function getBestLockedScore(player: Player) {
   return Math.max(...lockedBrackets.map((bracket) => bracket.score));
 }
 
+function getBracketLifeState(bracket: BracketEntry): BracketLifeState {
+  if (bracket.busted) return "busted";
+  if (bracket.championAlive === false) return "lameDuck";
+  return "alive";
+}
+
 function getLiveBracketCount(player: Player) {
-  return player.brackets.filter(
-    (bracket) => bracket.paid && bracket.locked && !bracket.busted
+  return getLockedPaidBrackets(player).filter(
+    (bracket) => getBracketLifeState(bracket) !== "busted"
+  ).length;
+}
+
+function getLameDuckCount(player: Player) {
+  return getLockedPaidBrackets(player).filter(
+    (bracket) => getBracketLifeState(bracket) === "lameDuck"
   ).length;
 }
 
@@ -74,6 +103,7 @@ export default function Leaderboard({ players }: LeaderboardProps) {
         {confirmedPlayers.map((player, index) => {
           const lockedEntries = getLockedPaidBrackets(player);
           const liveEntries = getLiveBracketCount(player);
+          const lameDuckCount = getLameDuckCount(player);
           const bestScore = getBestLockedScore(player);
           const busted = lockedEntries.length > 0 && liveEntries === 0;
           const isTopThree = index < 3;
@@ -110,9 +140,11 @@ export default function Leaderboard({ players }: LeaderboardProps) {
                         ? "No locked entries yet"
                         : busted
                           ? "All locked brackets busted"
-                          : `${liveEntries} live ${
-                              liveEntries === 1 ? "entry" : "entries"
-                            } still rolling`}
+                          : lameDuckCount > 0
+                            ? `${liveEntries} alive (${lameDuckCount} lame duck)`
+                            : `${liveEntries} live ${
+                                liveEntries === 1 ? "entry" : "entries"
+                              } still rolling`}
                     </div>
                   </div>
                 </div>
@@ -154,12 +186,18 @@ export default function Leaderboard({ players }: LeaderboardProps) {
 
                 <span
                   className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                    liveEntries > 0
-                      ? "bg-yellow-500/20 text-yellow-300"
-                      : "bg-zinc-700 text-zinc-300"
+                    liveEntries === 0
+                      ? "bg-zinc-700 text-zinc-300"
+                      : lameDuckCount > 0
+                        ? "bg-yellow-500/20 text-yellow-300"
+                        : "bg-emerald-500/20 text-emerald-300"
                   }`}
                 >
-                  {liveEntries > 0 ? `${liveEntries} alive` : "Busted"}
+                  {liveEntries === 0
+                    ? "Busted"
+                    : lameDuckCount > 0
+                      ? `${lameDuckCount} lame duck`
+                      : `${liveEntries} alive`}
                 </span>
 
                 {isTopThree && (

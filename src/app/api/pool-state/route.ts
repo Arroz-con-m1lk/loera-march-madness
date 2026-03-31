@@ -1,70 +1,66 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { getBracketScore } from "@/lib/scoreBracket";
+import { getBracketScore, isTeamStillAlive } from "@/lib/scoreBracket";
 import {
+  getChampionPickFromRounds,
   normalizeReadablePicks,
   type PickRound,
 } from "@/lib/bracketRounds";
-import { teamsMatch } from "@/lib/normalizeTeamName";
 
-function normalizeName(value: string | null | undefined) {
-  return (value ?? "").trim().toLowerCase();
+function getEffectiveChampionPick(
+  readablePicks: PickRound[],
+  storedChampionPick: string | null | undefined
+) {
+  const fromReadable = getChampionPickFromRounds(readablePicks).trim();
+  if (fromReadable) return fromReadable;
+
+  return (storedChampionPick ?? "").trim();
 }
 
 function getChampionAliveFromResults(
-  championPick: string | null | undefined,
+  championPick: string,
   results: PickRound[]
 ) {
-  const pick = (championPick ?? "").trim();
-  if (!pick) return true;
-
-  const normalized = normalizeReadablePicks(results);
-  const hasAnyResults = normalized.some((round) =>
-    round.teams.some((team) => team.trim().length > 0)
-  );
-
-  if (!hasAnyResults) return true;
-
-  const appearsInResults = normalized.some((round) =>
-    round.teams.some((team) => teamsMatch(team, pick))
-  );
-
-  const championshipRound = normalized.find(
-    (round) => round.round === "Championship"
-  );
-  const championTeam = championshipRound?.teams?.[0]?.trim() ?? "";
-
-  if (championTeam) {
-    return teamsMatch(championTeam, pick);
-  }
-
-  return appearsInResults;
+  if (!championPick) return true;
+  return isTeamStillAlive(championPick, results);
 }
 
-function didTeamLoseBeforeRound(
-  team: string,
-  roundIndex: number,
+function hasAnyFilledPicks(readablePicks: PickRound[]) {
+  return readablePicks.some((round) =>
+    round.teams.some((team) => team.trim().length > 0)
+  );
+}
+
+function hasAnyFutureScoringPath(
+  readablePicks: PickRound[],
   officialResults: PickRound[]
 ) {
-  const normalizedTeam = normalizeName(team);
+  const normalizedPicks = normalizeReadablePicks(readablePicks);
+  const normalizedResults = normalizeReadablePicks(officialResults);
 
-  for (let i = 0; i < roundIndex; i += 1) {
-    const priorRound = officialResults[i];
-    const winners = priorRound?.teams ?? [];
-    const anyPriorResultsEntered = winners.some(
-      (winner) => winner.trim().length > 0
+  for (const pickRound of normalizedPicks) {
+    const resultRound = normalizedResults.find(
+      (round) => round.round === pickRound.round
     );
 
-    if (!anyPriorResultsEntered) {
-      continue;
-    }
+    const picks = pickRound.teams ?? [];
+    const winners = resultRound?.teams ?? [];
 
-    const stillAliveInPriorRound = winners.some(
-      (winner) => normalizeName(winner) === normalizedTeam
-    );
+    for (let slotIndex = 0; slotIndex < picks.length; slotIndex += 1) {
+      const pickedTeam = picks[slotIndex]?.trim() ?? "";
+      if (!pickedTeam) continue;
 
-    if (!stillAliveInPriorRound) {
-      return true;
+      const officialWinner = winners[slotIndex]?.trim() ?? "";
+
+      // If that game is already decided, this slot cannot add future points.
+      if (officialWinner) {
+        continue;
+      }
+
+      // Unresolved slot + team still alive = future path still exists.
+      if (isTeamStillAlive(pickedTeam, normalizedResults)) {
+        return true;
+      }
     }
   }
 
@@ -73,44 +69,38 @@ function didTeamLoseBeforeRound(
 
 function getBracketBusted(
   readablePicks: PickRound[],
-  officialResults: PickRound[]
+  officialResults: PickRound[],
+  options?: {
+    championPick?: string | null;
+    paid?: boolean;
+    submitted?: boolean;
+    locked?: boolean;
+  }
 ) {
   const normalizedPicks = normalizeReadablePicks(readablePicks);
   const normalizedResults = normalizeReadablePicks(officialResults);
 
-  for (let roundIndex = 0; roundIndex < normalizedPicks.length; roundIndex += 1) {
-    const pickRound = normalizedPicks[roundIndex];
-    const resultRound = normalizedResults[roundIndex];
-    const picks = pickRound?.teams ?? [];
-    const winners = resultRound?.teams ?? [];
+  const effectiveChampionPick = getEffectiveChampionPick(
+    normalizedPicks,
+    options?.championPick
+  );
 
-    for (let i = 0; i < picks.length; i += 1) {
-      const pickedTeam = picks[i]?.trim();
-      if (!pickedTeam) continue;
+  const hasReadable = hasAnyFilledPicks(normalizedPicks);
 
-      const officialWinner = winners[i]?.trim();
-
-      if (officialWinner) {
-        if (normalizeName(officialWinner) === normalizeName(pickedTeam)) {
-          continue;
-        }
-
-        continue;
-      }
-
-      const deadEarlier = didTeamLoseBeforeRound(
-        pickedTeam,
-        roundIndex,
-        normalizedResults
-      );
-
-      if (!deadEarlier) {
-        return false;
-      }
+  // Entered bracket with no readable picks and no champion path is dead.
+  if (!hasReadable) {
+    if ((options?.paid || options?.submitted || options?.locked) && !effectiveChampionPick) {
+      return true;
     }
+
+    if (effectiveChampionPick) {
+      return !isTeamStillAlive(effectiveChampionPick, normalizedResults);
+    }
+
+    return false;
   }
 
-  return true;
+  return !hasAnyFutureScoringPath(normalizedPicks, normalizedResults);
 }
 
 export async function GET() {
@@ -191,12 +181,22 @@ export async function GET() {
           Array.isArray(bracket.readable_picks) ? bracket.readable_picks : []
         );
 
+        const effectiveChampionPick = getEffectiveChampionPick(
+          readablePicks,
+          bracket.champion_pick
+        );
+
         const computedScore = getBracketScore(readablePicks, officialResults);
         const championAlive = getChampionAliveFromResults(
-          bracket.champion_pick,
+          effectiveChampionPick,
           officialResults
         );
-        const busted = getBracketBusted(readablePicks, officialResults);
+        const busted = getBracketBusted(readablePicks, officialResults, {
+          championPick: effectiveChampionPick,
+          paid: !!bracket.paid,
+          submitted: !!bracket.submitted,
+          locked: !!bracket.locked,
+        });
 
         return {
           id: bracket.id,
@@ -210,7 +210,7 @@ export async function GET() {
           locked: !!bracket.locked,
           score: computedScore,
           championAlive,
-          championPick: bracket.champion_pick ?? undefined,
+          championPick: effectiveChampionPick || undefined,
           busted,
           readablePicks,
         };
